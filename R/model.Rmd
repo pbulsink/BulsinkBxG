@@ -1,0 +1,233 @@
+---
+title: "BulsinkB xG Model"
+author: "Philip Bulisnk"
+date: "21/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#library(BulsinkBxG)
+#source("~/GitHub/BulsinkBxG/R/data.R")
+#source("~/GitHub/BulsinkBxG/R/scrape.R")
+library(dplyr)
+
+```
+
+#Intro
+
+This document will outline the creating of a xG model for use in the BulsinkB model (see [twitter.com/BulsinkB](https://www.twitter.com/BulsinkB)). This model bulding will use the tidymodels toolset and be based on excellent work by Matt Barlowe and Evolving Wild. 
+
+#Data
+
+We'll start by loading data using the tools in this package, then combining all but the most recent season's data into one file:
+```{r data_load}
+pbp2007<-readRDS("~/NHLpbp/2007.rds")
+pbp2008<-readRDS("~/NHLpbp/2008.rds")
+pbp2009<-readRDS("~/NHLpbp/2009.rds")
+pbp2010<-readRDS("~/NHLpbp/2010.rds")
+pbp2011<-readRDS("~/NHLpbp/2011.rds")
+pbp2012<-readRDS("~/NHLpbp/2012.rds")
+pbp2013<-readRDS("~/NHLpbp/2013.rds")
+pbp2014<-readRDS("~/NHLpbp/2014.rds")
+pbp2015<-readRDS("~/NHLpbp/2015.rds")
+pbp2016<-readRDS("~/NHLpbp/2016.rds")
+pbp2017<-readRDS("~/NHLpbp/2017.rds")
+pbp2018<-readRDS("~/NHLpbp/2018.rds")
+#pbp2019<-readRDS("~/NHLpbp/2019.rds")
+
+pbp<-dplyr::bind_rows(pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015, pbp2016, pbp2017)#, pbp2018)
+pbp_test<-pbp2018
+
+#Get rid of year files: we don't need them in memory anymore
+#rm(pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015, pbp2016, pbp2017, pbp2018)
+```
+
+Note that we'll use 2019 (current season) data as the test to see how well the model predicts. How much data do we have? The number of events in the training (2007 - 2018) data is `r nrow(pbp)` and the number of rows in the testing 2019 data is `r nrow(pbp_test)`
+
+Now some more shortcut prep:
+```{r prep}
+fenwick_events <- c('SHOT', 'MISS', 'GOAL')
+corsi_events <- c('SHOT', 'MISS', 'BLOCK', 'GOAL')
+play_events <- c('FAC', 'OFF', 'HIT', 'SHOT', 'GIVE', 'MISS', 'GOAL', 'BLOCK', 'TAKE')
+#' play_events exclude:
+#' STOP - stoppage (always followed by faceoff)
+#' PSTR/GSTR - Period/Game start (always followed by faceoff)
+#' PGSTR/PGEND - Pregame Start/end
+#' PEND/GEND - Period/Game end
+#' ANTHEM - national anthem
+#' SOC - Shootout complete
+#' EISTR/EIEND - Early Intermission Start/End 
+#' GOFF - Goal called off - we don't know why
+#' EGT/EGPID - Emergency Goaltender Info
+#' CHL - ??
+```
+
+##Data Munching
+We'll use Fenwick data here: the NHL PBP doesn't provide the shooter location on a shot-block event. So we'll start paring down the data. Note that we're also selecting the immediately preceding event for some feature testing down the road.
+
+```{r fenwick_cut}
+pbp<-pbp %>%
+  filter(coords_x != 'NA' & coords_y != "NA" & event_detail != "NA" & event_team != "NA") %>%
+  filter(event_type %in% fenwick_events | dplyr::lag(event_type %in% fenwick_events)) %>%
+  select(-c(session, event_zone, event_length, num_on, num_off, players_on, players_off, game_score_state, game_strength_state))
+
+pbp_test<-pbp_test %>%
+  filter(coords_x != 'NA' & coords_y != "NA" & event_detail != "NA" & event_team != "NA") %>%
+  filter(event_type %in% fenwick_events | dplyr::lag(event_type %in% fenwick_events)) %>%
+  select(-c(session, event_zone, event_length, num_on, num_off, players_on, players_off, game_score_state, game_strength_state))
+```
+
+That has quickly reduced our data size: we now have `r nrow(pbp)` training rows and `r nrow(pbp_test)` test rows.
+
+We'll now move on by adding a bunch of data columns (and maybe dropping a few too). This feature addition is not changing the data, but just re-phrasing it in a way that a model can use it to make predictions. This is where the 'art' of data science lives.
+
+```{r features}
+pbp2<-pbp %>%
+  mutate(is_home = if_else(event_team == home_team, 1, 0),  # binary home team event factor
+         is_goal = if_else(event_type == "GOAL", 1, 0),  # binary is goal factor
+         x_coord = abs(coords_x),  # absolute x coordinate - put home and away on same side of ice
+         y_coord = if_else(coords_x < 0, coords_y * -1, coords_y)) %>%  # absolute y coordinate - for calculations
+#calculate time_diff but only use the game, don't rever to previous game in data stack
+  group_by(game_id) %>%
+    arrange(event_index, .by_group = TRUE) %>%
+    mutate(time_diff = game_seconds - dplyr::lag(game_seconds)) %>%  # calculate time from previous event
+  ungroup() %>%
+  mutate(time_diff = if_else(is.na(time_diff), 100, time_diff),  # fix any NA results - 100 s will have such low impact on values.
+         time_diff = if_else(time_diff < 0, 1000, time_diff)) %>%  # <0 time diff makes no sense, bump it to the psudo na value of 100 s
+  mutate(is_rebound = if_else(time_diff < 3 & event_type %in% fenwick_events & dplyr::lag(event_type) %in% corsi_events & event_team == dplyr::lag(event_team), 1, 0),  # is this a rebound shot?
+         is_rush = ifelse(time_diff < 4 & abs(dplyr::lag(coords_x)) < 25, 1, 0),  # does this look like a shot on a rush?
+         speed = if_else(!is.na(time_diff), sqrt((coords_x-dplyr::lag(coords_x))^2 + (coords_y - dplyr::lag(coords_y))^2)/time_diff, 0),  # speed from previous event to shot location in m/s
+         shot_side = if_else((coords_x < 0 & coords_y < 0) | (coords_x > 0 & coords_y > 0), 'right', 'left'),  # from which side (goalie view) the fenwick comes from
+         cross_ice = if_else(shot_side == dplyr::lag(shot_side), 1, 0)) %>%  # if shot comes from opposite side of previous event
+#Fixing any NA results or other illogicals
+  mutate(is_rush = if_else(is.na(is_rush), 0, is_rush), 
+         is_rebound = if_else(is.na(is_rebound), 0, is_rebound),
+         speed = if_else(is.na(speed), 0, speed),
+         speed = if_else(is.infinite(speed), 0, speed),
+         shot_side = if_else(is.na(shot_side), 'middle', shot_side),
+         cross_ice = if_else(is.na(cross_ice), 0, cross_ice)) %>%
+#We've done our manipulations using the lagged data, go to fenwick only data now (and drop shootout attempts for which game_seconds == 3900)
+  filter(event_type %in% fenwick_events & game_seconds != 3900) %>%
+  mutate(shot_angle = (asin(y_coord/sqrt((87.95 - x_coord)^2 + y_coord^2))*180)/ 3.14,  # angle to the center of the goal mouth
+         shot_distance = sqrt((87.95 - x_coord)^2 + y_coord^2)) %>%  # distance to the center of the goal mouth
+  mutate(shot_angle = if_else(x_coord > 88, 90 + shot_angle,shot_angle)) %>% # fix angles for behind-net shots
+  mutate(attacker_benefit = if_else(is_home == 1, home_skaters - away_skaters, away_skaters - home_skaters),  # Does the shooting team have more or less players on ice?
+         #extra_attacker = if_else((is_home & home_skaters > away_skaters) | (!is_home & away_skaters > home_skaters), 1, 0),
+         #shorthanded = if_else((is_home & home_skaters < away_skaters) | (!is_home & away_skaters < home_skaters), 1, 0),
+         shooter_net_empty = if_else((is_home == 1 & is.na(home_goalie)) | (!is_home == 1 & is.na(away_goalie)), 1, 0),  # Is the shooter's goalie pulled?
+         target_net_empty = if_else((is_home == 1 & is.na(away_goalie)) | (!is_home == 1 & is.na(home_goalie)), 1, 0),  # Is the target goalie pulled?
+         shooter_goal_differential = if_else(is_home == 1, home_score - away_score, away_score - home_score)  # What's the score impact?
+         )
+
+pbp_test2<-pbp_test %>%
+  mutate(is_home = if_else(event_team == home_team, 1, 0),  # binary home team event factor
+         is_goal = if_else(event_type == "GOAL", 1, 0),  # binary is goal factor
+         x_coord = abs(coords_x),  # absolute x coordinate - put home and away on same side of ice
+         y_coord = if_else(coords_x < 0, coords_y * -1, coords_y)) %>%  # absolute y coordinate - for calculations
+#calculate time_diff but only use the game, don't rever to previous game in data stack
+  group_by(game_id) %>%
+    arrange(event_index, .by_group = TRUE) %>%
+    mutate(time_diff = game_seconds - dplyr::lag(game_seconds)) %>%  # calculate time from previous event
+  ungroup() %>%
+  mutate(time_diff = if_else(is.na(time_diff), 100, time_diff),  # fix any NA results - 100 s will have such low impact on values.
+         time_diff = if_else(time_diff < 0, 1000, time_diff)) %>%  # <0 time diff makes no sense, bump it to the psudo na value of 100 s
+  mutate(is_rebound = if_else(time_diff < 3 & event_type %in% fenwick_events & dplyr::lag(event_type) %in% corsi_events & event_team == dplyr::lag(event_team), 1, 0),  # is this a rebound shot?
+         is_rush = ifelse(time_diff < 4 & abs(dplyr::lag(coords_x)) < 25, 1, 0),  # does this look like a shot on a rush?
+         speed = if_else(!is.na(time_diff), sqrt((coords_x-dplyr::lag(coords_x))^2 + (coords_y - dplyr::lag(coords_y))^2)/time_diff, 0),  # speed from previous event to shot location in m/s
+         shot_side = if_else((coords_x < 0 & coords_y < 0) | (coords_x > 0 & coords_y > 0), 'right', 'left'),  # from which side (goalie view) the fenwick comes from
+         cross_ice = if_else(shot_side == dplyr::lag(shot_side), 1, 0)) %>%  # if shot comes from opposite side of previous event
+#Fixing any NA results or other illogicals
+  mutate(is_rush = if_else(is.na(is_rush), 0, is_rush), 
+         is_rebound = if_else(is.na(is_rebound), 0, is_rebound),
+         speed = if_else(is.na(speed), 0, speed),
+         speed = if_else(is.infinite(speed), 0, speed),
+         shot_side = if_else(is.na(shot_side), 'middle', shot_side),
+         cross_ice = if_else(is.na(cross_ice), 0, cross_ice)) %>%
+#We've done our manipulations using the lagged data, go to fenwick only data now (and drop shootout attempts for which game_seconds == 3900)
+  filter(event_type %in% fenwick_events & game_seconds != 3900) %>%
+  mutate(shot_angle = (asin(y_coord/sqrt((87.95 - x_coord)^2 + y_coord^2))*180)/ 3.14,  # angle to the center of the goal mouth
+         shot_distance = sqrt((87.95 - x_coord)^2 + y_coord^2)) %>%  # distance to the center of the goal mouth
+  mutate(shot_angle = if_else(x_coord > 88, 90 + shot_angle,shot_angle)) %>% # fix angles for behind-net shots
+  mutate(attacker_benefit = if_else(is_home == 1, home_skaters - away_skaters, away_skaters - home_skaters),  # Does the shooting team have more or less players on ice?
+         #extra_attacker = if_else((is_home & home_skaters > away_skaters) | (!is_home & away_skaters > home_skaters), 1, 0),
+         #shorthanded = if_else((is_home & home_skaters < away_skaters) | (!is_home & away_skaters < home_skaters), 1, 0),
+         shooter_net_empty = if_else((is_home == 1 & is.na(home_goalie)) | (!is_home == 1 & is.na(away_goalie)), 1, 0),  # Is the shooter's goalie pulled?
+         target_net_empty = if_else((is_home == 1 & is.na(away_goalie)) | (!is_home == 1 & is.na(home_goalie)), 1, 0),  # Is the target goalie pulled?
+         shooter_goal_differential = if_else(is_home == 1, home_score - away_score, away_score - home_score)  # What's the score impact?
+         )
+
+```
+
+#Modelling
+We'll be using the tidymodels package in R to do the actual modeling. There are a few more things to do with the data to prepare it for tidymodels.
+```{r tidymodel_prepare}
+pbp2$is_goal<-as.factor(pbp2$is_goal)
+pbp_test2$is_goal<-as.factor(pbp_test2$is_goal)
+
+pbp2$event_detail<-as.factor(pbp2$event_detail)
+pbp2$is_rebound<-as.factor(pbp2$is_rebound)
+pbp2$is_rush<-as.factor(pbp2$is_rush)
+pbp2$shooter_net_empty<-as.factor(pbp2$shooter_net_empty)
+pbp2$target_net_empty<-as.factor(pbp2$target_net_empty)
+pbp2$cross_ice<-as.factor(pbp2$cross_ice)
+pbp2$shot_side<-as.factor(pbp2$shot_side)
+
+pbp_test2$event_detail<-as.factor(pbp_test2$event_detail)
+pbp_test2$is_rebound<-as.factor(pbp_test2$is_rebound)
+pbp_test2$is_rush<-as.factor(pbp_test2$is_rush)
+pbp_test2$shooter_net_empty<-as.factor(pbp_test2$shooter_net_empty)
+pbp_test2$target_net_empty<-as.factor(pbp_test2$target_net_empty)
+pbp_test2$cross_ice<-as.factor(pbp_test2$cross_ice)
+pbp_test2$shot_side<-as.factor(pbp_test2$shot_side)
+```
+
+Now we'll split the data randomly into in-sample test & train sets, then prepare the general recipe (or formula) that we want to feed into the model.
+```{r tidymodel_recipe}
+library(tidymodels)
+set.seed(seed = 2007)
+
+train_test_split <- initial_split(data = pbp2, prop = 0.80)
+
+train_data<-train_test_split %>% training()
+test_data<-train_test_split %>% testing()
+
+model_recipe <- 
+  recipe(is_goal ~ shot_distance + shot_angle + event_detail + is_rebound + is_rush +
+                   shooter_net_empty + target_net_empty + speed + attacker_benefit + 
+                   shooter_goal_differential + shot_side + cross_ice + x_coord + y_coord,
+         data = train_data) %>%
+  update_role(x_coord, y_coord, new_role = "ID") 
+
+summary(model_recipe)
+```
+
+
+Now we can define our model (this is the bit that is changeable) then feed that design into the modeling workflow.
+
+```{r model_design}
+model <- logistic_reg() %>%
+  set_engine('glm')
+
+xg_wflow<-workflow() %>%
+  add_model(model) %>%
+  add_recipe(model_recipe)
+
+xg_wflow
+```
+
+Now we do the work:
+
+```{r model_work}
+xg_fit <- xg_wflow %>%
+  fit(data = train_data)
+
+xg_fit %>% 
+  pull_workflow_fit() %>% 
+  tidy()
+```
+
+
+#Checking Model Output
+Does it make sense?
+#Conclusion
