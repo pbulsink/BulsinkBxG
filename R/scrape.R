@@ -21,19 +21,44 @@ scrape_and_save<-function(scrapegames, data_dir="~/NHLpbp", ignore_downloads = F
     dir.create(data_dir)
   }
   badgames<-c()
+  summarygames<-c()
   for(game in scrapegames){
     if(!file.exists(file.path(data_dir, paste0(game, ".rds"))) || ignore_downloads){
       pbp<-NULL
-      tryCatch(
-        pbp <- sc.scrape_pbp(games = as.character(game)),
-        error = function(e) {badgames<-c(badgames, game)},
-        finally = saveRDS(pbp, file=file.path(data_dir, paste0(game, ".rds")))
+
+      pbp<-tryCatch(
+        sc.scrape_pbp(games = as.character(game)),
+        error = function(e){
+          message("Attempted full scrape of game ", game, " threw error ", e)
+          return(NA)
+        }
+      )
+      if(is.na(pbp)){
+        message('Trying to get events anyway')
+        pbp<-tryCatch({
+          sc.scrape_pbp(games = as.character(game), scrape_type = 'event_summary')
+          summarygames<-c(summarygames, game)
+          },
+          error = function(e){
+            message("Attempted Events Only scrape of game ", game, " threw error ", e)
+            return(NA)
+          }
         )
+      }
+
+      if(!is.na(pbp) & !is.null(pbp)){
+        saveRDS(pbp, file=file.path(data_dir, paste0(game, ".rds")))
+      } else {
+        badgames<-c(badgames, game)
+      }
       invisible(gc())
     }
   }
   if(length(badgames) > 0){
     message("Bad Games: c(", paste(badgames, collapse = ', '), ")")
+  }
+  if(length(summarygames) > 0){
+    message("Summary games: c(", paste(summarygames, collapse = ', '), ")")
   }
 }
 
