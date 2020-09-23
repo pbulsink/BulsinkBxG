@@ -230,4 +230,65 @@ xg_fit %>%
 
 #Checking Model Output
 Does it make sense?
+
+We've saved some data that we can use to test the predictor with. 
+```{r check}
+pbp_test2$xG <- predict(xg_fit, pbp_test2, type = "prob")$.pred_1
+
+avg_xG_by_coord <- pbp_test2 %>% group_by(x_coord, y_coord) %>%
+    summarise(xg = mean(xG))
+
+ggplot(avg_xG_by_coord, aes(x_coord, y_coord, fill = xg)) + geom_raster() +
+    scale_fill_gradient(low = 'blue', high = 'red')+
+    geom_vline(xintercept = 0, color = 'red') +
+    geom_vline(xintercept = 25, color = 'blue') +
+    geom_vline(xintercept = 88, color = 'red') +
+    xlab('X Coordinates') + ylab('Y Coordinates') +
+    labs(title = 'Average xG Value by Coordinate')
+
+```
+
+We'll do some 'goodness of prediction' work now:
+```{r roc}
+roc_tbl<-roc_curve(data = pbp_test2, is_goal, xG, event_level = 'second')
+ggplot(roc_tbl, aes(x = 1 - specificity, y = sensitivity)) +
+  geom_abline(linetype = 2, slope = 1, intercept = 0) +
+  geom_line(size = 1.2) +
+  theme(aspect.ratio = 1)
+```
+
+This gives us an auc of `r roc_auc(pbp_test2, is_goal, xG, event_level = 'second')`.
+
+# Look at the Data
+Lets take a look at the data from the test year: First player lists
+```{r players}
+xg_player <- pbp_test2 %>%
+    group_by(event_player_1, event_team) %>%
+    summarise( xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
+    arrange(desc(xG))
+head(xg_player)
+player_xg <- lm(Goals ~ xG, data = xg_player)
+summary(player_xg)
+ggplot(aes(x = xG, y = Goals), data = xg_player) +
+    geom_point() + 
+    geom_smooth(method = 'lm') +
+    labs(title = 'Expected Goals vs Goals by Player')
+```
+
+Next, the same by team:
+```{r teams}
+xg_team <- pbp_test2 %>%
+    group_by(event_team) %>%
+    summarise( xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
+    arrange(desc(xG))
+head(xg_team)
+team_xg <- lm(Goals ~ xG, data = xg_team)
+summary(team_xg)
+ggplot(aes(x = xG, y = Goals), data = xg_team) +
+    geom_point() + 
+    geom_smooth(method = 'lm') +
+    labs(title = 'Expected Goals vs Goals by Team')
+```
+
+
 #Conclusion
