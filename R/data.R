@@ -1,4 +1,9 @@
 
+load_pbp_file_into_db<-function(pbp_file, db_file="~/NHLpbp/pbp.sqlite"){
+  stopifnot(file.exists(pbp_file))
+}
+
+
 #' Load season PBP from File
 #'
 #' @param year Season file to load
@@ -7,11 +12,10 @@
 #' @return pbp of whole season
 #' @export
 load_season_pbp<-function(year, data_dir = "~/NHLpbp"){
-  filelist<-list.files(path = data_dir, recursive = FALSE)
-  if(paste0(year, '.rds') %in% filelist){
-    return(readRDS(file.path(data_dir, paste0(year, '.rds'))))
+  if(!file.exists(file.path(data_dir, paste0(season, ".rds")))){
+    return(compile_season(season = season, data_dir = data_dir))
   } else {
-    return(compile_season(year = year, data_dir = data_dir))
+    return(readRDS(file.path(data_dir, paste0(season, ".rds"))))
   }
 }
 
@@ -24,7 +28,7 @@ load_season_pbp<-function(year, data_dir = "~/NHLpbp"){
 #' @export
 compile_season<-function(year, data_dir = "~/NHLpbp"){
   filelist<-list.files(path = data_dir, recursive = FALSE)
-  filelist<-filelist[grepl(pattern = paste0(year, "[0-9]{6}.rds"), x=filelist, ignore.case = TRUE)]
+  filelist<-filelist[grepl(pattern = paste0(season, "[0-9]{6}.rds"), x=filelist, ignore.case = TRUE)]
 
   stopifnot(length(filelist) > 0)
   pbp<-NULL

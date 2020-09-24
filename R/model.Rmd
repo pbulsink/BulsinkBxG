@@ -262,6 +262,7 @@ This gives us an auc of `r roc_auc(pbp_test2, is_goal, xG, event_level = 'second
 # Look at the Data
 Lets take a look at the data from the test year: First player lists
 ```{r players}
+pbp_test2$is_goal<-as.integer(pbp_test2$is_goal)-1  # convert is_goal back to 1/0 integer instead of factor. -1 because factors are 1 indexed...
 xg_player <- pbp_test2 %>%
     group_by(event_player_1, event_team) %>%
     summarise( xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
@@ -279,7 +280,7 @@ Next, the same by team:
 ```{r teams}
 xg_team <- pbp_test2 %>%
     group_by(event_team) %>%
-    summarise( xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
+    summarise(xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
     arrange(desc(xG))
 head(xg_team)
 team_xg <- lm(Goals ~ xG, data = xg_team)
@@ -290,5 +291,35 @@ ggplot(aes(x = xG, y = Goals), data = xg_team) +
     labs(title = 'Expected Goals vs Goals by Team')
 ```
 
+Next, the same by game, splitting the two teams. This will give us an idea of xg prediction vs actual goals per team.
+```{r games}
+xg_game <- pbp_test2 %>%
+    group_by(game_id, event_team) %>%
+    summarise(xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
+    arrange(desc(xG))
+head(xg_game)
+game_xg <- lm(Goals ~ xG, data = xg_game)
+summary(game_xg)
+ggplot(aes(x = xG, y = Goals), data = xg_game) +
+    geom_point() + 
+    geom_smooth(method = 'lm') +
+    labs(title = 'Expected Goals vs Goals by Game')
+```
 
-#Conclusion
+Lets look at the predictions of xG wins vs goal wins:
+```{r xg_pred_win}
+xg_win <- pbp_test2 %>% 
+  group_by(game_id) %>% 
+  summarize(
+    homeG = sum(is_goal[is_home == 1]), 
+    awayG = sum(is_goal[is_home == 0]), 
+    home_xg=sum(xG[is_home == 1]), 
+    away_xg=sum(xG[is_home == 0]), 
+    g_win=ifelse(homeG>awayG, 'home', 'away'), 
+    xg_win=ifelse(home_xg>away_xg, 'home', 'away'), 
+    agree=g_win==xg_win)
+```
+It looks like xG predicts winners `r *sum(xg_win$agree)/nrow(xg_win))*100`% of the time.
+
+
+Conclusion
