@@ -40,7 +40,7 @@ pbp<-dplyr::bind_rows(pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2
 pbp_test<-pbp2018
 
 #Get rid of year files: we don't need them in memory anymore
-#rm(pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015, pbp2016, pbp2017, pbp2018)
+#rm(pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015, pbp2016, pbp2017, pbp2018, pbp2019)
 ```
 
 Note that we'll use 2019 (current season) data as the test to see how well the model predicts. How much data do we have? The number of events in the training (2007 - 2018) data is `r nrow(pbp)` and the number of rows in the testing 2019 data is `r nrow(pbp_test)`
@@ -48,19 +48,6 @@ Note that we'll use 2019 (current season) data as the test to see how well the m
 Now some more shortcut prep:
 ```{r prep}
 fenwick_events <- c('SHOT', 'MISS', 'GOAL')
-corsi_events <- c('SHOT', 'MISS', 'BLOCK', 'GOAL')
-play_events <- c('FAC', 'OFF', 'HIT', 'SHOT', 'GIVE', 'MISS', 'GOAL', 'BLOCK', 'TAKE')
-#' play_events exclude:
-#' STOP - stoppage (always followed by faceoff)
-#' PSTR/GSTR - Period/Game start (always followed by faceoff)
-#' PGSTR/PGEND - Pregame Start/end
-#' PEND/GEND - Period/Game end
-#' ANTHEM - national anthem
-#' SOC - Shootout complete
-#' EISTR/EIEND - Early Intermission Start/End 
-#' GOFF - Goal called off - we don't know why
-#' EGT/EGPID - Emergency Goaltender Info
-#' CHL - ??
 ```
 
 ##Data Munching
@@ -83,12 +70,12 @@ That has quickly reduced our data size: we now have `r nrow(pbp)` training rows 
 We'll now move on by adding a bunch of data columns (and maybe dropping a few too). This feature addition is not changing the data, but just re-phrasing it in a way that a model can use it to make predictions. This is where the 'art' of data science lives.
 
 ```{r features}
-pbp2<-pbp %>%
+pbp<-pbp %>%
   mutate(is_home = if_else(event_team == home_team, 1, 0),  # binary home team event factor
          is_goal = if_else(event_type == "GOAL", 1, 0),  # binary is goal factor
          x_coord = abs(coords_x),  # absolute x coordinate - put home and away on same side of ice
          y_coord = if_else(coords_x < 0, coords_y * -1, coords_y)) %>%  # absolute y coordinate - for calculations
-#calculate time_diff but only use the game, don't rever to previous game in data stack
+#calculate time_diff but only use the game, don't revert to previous game in data stack
   group_by(game_id) %>%
     arrange(event_index, .by_group = TRUE) %>%
     mutate(time_diff = game_seconds - dplyr::lag(game_seconds)) %>%  # calculate time from previous event
@@ -96,21 +83,37 @@ pbp2<-pbp %>%
   mutate(time_diff = if_else(is.na(time_diff), 100, time_diff),  # fix any NA results - 100 s will have such low impact on values.
          time_diff = if_else(time_diff < 0, 1000, time_diff)) %>%  # <0 time diff makes no sense, bump it to the psudo na value of 100 s
   mutate(is_rebound = if_else(time_diff < 3 & event_type %in% fenwick_events & dplyr::lag(event_type) %in% corsi_events & event_team == dplyr::lag(event_team), 1, 0),  # is this a rebound shot?
-         is_rush = ifelse(time_diff < 4 & abs(dplyr::lag(coords_x)) < 25, 1, 0),  # does this look like a shot on a rush?
+         is_rush = if_else(time_diff < 4 & abs(dplyr::lag(coords_x)) < 25, 1, 0),  # does this look like a shot on a rush?
          speed = if_else(!is.na(time_diff), sqrt((coords_x-dplyr::lag(coords_x))^2 + (coords_y - dplyr::lag(coords_y))^2)/time_diff, 0),  # speed from previous event to shot location in m/s
          shot_side = if_else((coords_x < 0 & coords_y < 0) | (coords_x > 0 & coords_y > 0), 'right', 'left'),  # from which side (goalie view) the fenwick comes from
          cross_ice = if_else(shot_side == dplyr::lag(shot_side), 1, 0)) %>%  # if shot comes from opposite side of previous event
 #Fixing any NA results or other illogicals
   mutate(is_rush = if_else(is.na(is_rush), 0, is_rush), 
          is_rebound = if_else(is.na(is_rebound), 0, is_rebound),
+         is_cluster = if_else(lag(is_rebound)==1 & is_rebound == 1, 1, 0),
          speed = if_else(is.na(speed), 0, speed),
          speed = if_else(is.infinite(speed), 0, speed),
          shot_side = if_else(is.na(shot_side), 'middle', shot_side),
-         cross_ice = if_else(is.na(cross_ice), 0, cross_ice)) %>%
+         cross_ice = if_else(is.na(cross_ice), 0, cross_ice),
+         pbp_distance = suppressWarnings(as.numeric(sub(".*Zone, *(.*?) * ft.*", "\\1", event_description))),
+         #event_zone from EW
+         event_zone = ifelse((grepl("off. zone", tolower(event_description)) == TRUE), "Off", 
+                               ifelse((grepl("neu. zone", tolower(event_description)) == TRUE), "Neu", 
+                                      ifelse((grepl("def. zone", tolower(event_description)) == TRUE), "Def", 
+                                             NA))),  
+         event_zone = ifelse(event_zone == "Def" & event_type == "BLOCK", "Off", event_zone), 
+         event_zone = ifelse(event_type %in% fenwick_events & event_zone == "Def" & pbp_distance <= 64, "Off", event_zone)) %>%
 #We've done our manipulations using the lagged data, go to fenwick only data now (and drop shootout attempts for which game_seconds == 3900)
   filter(event_type %in% fenwick_events & game_seconds != 3900) %>%
-  mutate(shot_angle = (asin(y_coord/sqrt((87.95 - x_coord)^2 + y_coord^2))*180)/ 3.14,  # angle to the center of the goal mouth
-         shot_distance = sqrt((87.95 - x_coord)^2 + y_coord^2)) %>%  # distance to the center of the goal mouth
+  mutate(shot_angle = abs(atan(coords_y / (89 - abs(coords_x))) * (180 / pi)),  # angle to the center of the goal mouth TODO: change to nearest post
+         shot_distance = sqrt((87.95 - abs(coords_x))^2 + coords_y^2) # distance to the center of the goal mouth TODO: change to nearest post
+         ) %>%  
+  mutate(# Update distance calc for long shots (and various mistakes) from EW
+         shot_distance = if_else(pbp_distance > 89 & event_detail != "Wrap-around" & event_detail != "Tip-In" & event_detail != "Deflected" & !(pbp_distance > 89 & event_zone == "Off"),
+                                  sqrt((abs(coords_x) + 89)^2 + coords_y^2), shot_distance),  
+         shot_angle = if_else(pbp_distance > 89 & event_detail != "Tip-In" & event_detail !="Wrap-around" & event_detail != "Deflected" & !(pbp_distance > 89 & event_zone == "Off"), 
+                                abs(atan(coords_y / (abs(coords_x) + 89)) * (180 / pi)), shot_angle), 
+         event_zone = ifelse(event_zone == "Def" & pbp_distance <= 64, "Off", event_zone))%>%
   mutate(shot_angle = if_else(x_coord > 88, 90 + shot_angle,shot_angle)) %>% # fix angles for behind-net shots
   mutate(attacker_benefit = if_else(is_home == 1, home_skaters - away_skaters, away_skaters - home_skaters),  # Does the shooting team have more or less players on ice?
          #extra_attacker = if_else((is_home & home_skaters > away_skaters) | (!is_home & away_skaters > home_skaters), 1, 0),
@@ -120,12 +123,12 @@ pbp2<-pbp %>%
          shooter_goal_differential = if_else(is_home == 1, home_score - away_score, away_score - home_score)  # What's the score impact?
          )
 
-pbp_test2<-pbp_test %>%
+pbp_test<-pbp_test %>%
   mutate(is_home = if_else(event_team == home_team, 1, 0),  # binary home team event factor
          is_goal = if_else(event_type == "GOAL", 1, 0),  # binary is goal factor
          x_coord = abs(coords_x),  # absolute x coordinate - put home and away on same side of ice
          y_coord = if_else(coords_x < 0, coords_y * -1, coords_y)) %>%  # absolute y coordinate - for calculations
-#calculate time_diff but only use the game, don't rever to previous game in data stack
+#calculate time_diff but only use the game, don't revert to previous game in data stack
   group_by(game_id) %>%
     arrange(event_index, .by_group = TRUE) %>%
     mutate(time_diff = game_seconds - dplyr::lag(game_seconds)) %>%  # calculate time from previous event
@@ -133,21 +136,37 @@ pbp_test2<-pbp_test %>%
   mutate(time_diff = if_else(is.na(time_diff), 100, time_diff),  # fix any NA results - 100 s will have such low impact on values.
          time_diff = if_else(time_diff < 0, 1000, time_diff)) %>%  # <0 time diff makes no sense, bump it to the psudo na value of 100 s
   mutate(is_rebound = if_else(time_diff < 3 & event_type %in% fenwick_events & dplyr::lag(event_type) %in% corsi_events & event_team == dplyr::lag(event_team), 1, 0),  # is this a rebound shot?
-         is_rush = ifelse(time_diff < 4 & abs(dplyr::lag(coords_x)) < 25, 1, 0),  # does this look like a shot on a rush?
+         is_rush = if_else(time_diff < 4 & abs(dplyr::lag(coords_x)) < 25, 1, 0),  # does this look like a shot on a rush?
          speed = if_else(!is.na(time_diff), sqrt((coords_x-dplyr::lag(coords_x))^2 + (coords_y - dplyr::lag(coords_y))^2)/time_diff, 0),  # speed from previous event to shot location in m/s
          shot_side = if_else((coords_x < 0 & coords_y < 0) | (coords_x > 0 & coords_y > 0), 'right', 'left'),  # from which side (goalie view) the fenwick comes from
          cross_ice = if_else(shot_side == dplyr::lag(shot_side), 1, 0)) %>%  # if shot comes from opposite side of previous event
 #Fixing any NA results or other illogicals
   mutate(is_rush = if_else(is.na(is_rush), 0, is_rush), 
          is_rebound = if_else(is.na(is_rebound), 0, is_rebound),
+         is_cluster = if_else(lag(is_rebound)==1 & is_rebound == 1, 1, 0),
          speed = if_else(is.na(speed), 0, speed),
          speed = if_else(is.infinite(speed), 0, speed),
          shot_side = if_else(is.na(shot_side), 'middle', shot_side),
-         cross_ice = if_else(is.na(cross_ice), 0, cross_ice)) %>%
+         cross_ice = if_else(is.na(cross_ice), 0, cross_ice),
+         pbp_distance = suppressWarnings(as.numeric(sub(".*Zone, *(.*?) * ft.*", "\\1", event_description))),
+         #event_zone from EW
+         event_zone = ifelse((grepl("off. zone", tolower(event_description)) == TRUE), "Off", 
+                               ifelse((grepl("neu. zone", tolower(event_description)) == TRUE), "Neu", 
+                                      ifelse((grepl("def. zone", tolower(event_description)) == TRUE), "Def", 
+                                             NA))),  
+         event_zone = ifelse(event_zone == "Def" & event_type == "BLOCK", "Off", event_zone), 
+         event_zone = ifelse(event_type %in% fenwick_events & event_zone == "Def" & pbp_distance <= 64, "Off", event_zone)) %>%
 #We've done our manipulations using the lagged data, go to fenwick only data now (and drop shootout attempts for which game_seconds == 3900)
   filter(event_type %in% fenwick_events & game_seconds != 3900) %>%
-  mutate(shot_angle = (asin(y_coord/sqrt((87.95 - x_coord)^2 + y_coord^2))*180)/ 3.14,  # angle to the center of the goal mouth
-         shot_distance = sqrt((87.95 - x_coord)^2 + y_coord^2)) %>%  # distance to the center of the goal mouth
+  mutate(shot_angle = abs(atan(coords_y / (89 - abs(coords_x))) * (180 / pi)),  # angle to the center of the goal mouth TODO: change to nearest post
+         shot_distance = sqrt((87.95 - abs(coords_x))^2 + coords_y^2) # distance to the center of the goal mouth TODO: change to nearest post
+         ) %>%  
+  mutate(# Update distance calc for long shots (and various mistakes) from EW
+         shot_distance = if_else(pbp_distance > 89 & !(event_detail %in% c("Wrap-around", "Tip-In", "Deflected")) & !(pbp_distance > 89 & event_zone == "Off"),
+                                  sqrt((abs(coords_x) + 89)^2 + coords_y^2), shot_distance),  
+         shot_angle = ifelse(pbp_distance > 89 & !(event_detail %in% c("Tip-In", "Wrap-around", "Deflected")) & !(pbp_distance > 89 & event_zone == "Off"), 
+                                abs(atan(coords_y / (abs(coords_x) + 89)) * (180 / pi)), shot_angle), 
+         event_zone = ifelse( event_zone == "Def" & pbp_distance <= 64, "Off", event_zone))%>%
   mutate(shot_angle = if_else(x_coord > 88, 90 + shot_angle,shot_angle)) %>% # fix angles for behind-net shots
   mutate(attacker_benefit = if_else(is_home == 1, home_skaters - away_skaters, away_skaters - home_skaters),  # Does the shooting team have more or less players on ice?
          #extra_attacker = if_else((is_home & home_skaters > away_skaters) | (!is_home & away_skaters > home_skaters), 1, 0),
@@ -162,24 +181,28 @@ pbp_test2<-pbp_test %>%
 #Modelling
 We'll be using the tidymodels package in R to do the actual modeling. There are a few more things to do with the data to prepare it for tidymodels.
 ```{r tidymodel_prepare}
-pbp2$is_goal<-as.factor(pbp2$is_goal)
-pbp_test2$is_goal<-as.factor(pbp_test2$is_goal)
+pbp$is_goal<-as.factor(pbp$is_goal)
+pbp_test$is_goal<-as.factor(pbp_test$is_goal)
 
-pbp2$event_detail<-as.factor(pbp2$event_detail)
-pbp2$is_rebound<-as.factor(pbp2$is_rebound)
-pbp2$is_rush<-as.factor(pbp2$is_rush)
-pbp2$shooter_net_empty<-as.factor(pbp2$shooter_net_empty)
-pbp2$target_net_empty<-as.factor(pbp2$target_net_empty)
-pbp2$cross_ice<-as.factor(pbp2$cross_ice)
-pbp2$shot_side<-as.factor(pbp2$shot_side)
+pbp$event_detail<-as.factor(pbp$event_detail)
+pbp$is_rebound<-as.factor(pbp$is_rebound)
+pbp$is_rush<-as.factor(pbp$is_rush)
+pbp$shooter_net_empty<-as.factor(pbp$shooter_net_empty)
+pbp$target_net_empty<-as.factor(pbp$target_net_empty)
+pbp$cross_ice<-as.factor(pbp$cross_ice)
+pbp$shot_side<-as.factor(pbp$shot_side)
+pbp$event_zone<-as.factor(pbp$event_zone)
+pbp$is_cluster<-as.factor(pbp$is_cluster)
 
-pbp_test2$event_detail<-as.factor(pbp_test2$event_detail)
-pbp_test2$is_rebound<-as.factor(pbp_test2$is_rebound)
-pbp_test2$is_rush<-as.factor(pbp_test2$is_rush)
-pbp_test2$shooter_net_empty<-as.factor(pbp_test2$shooter_net_empty)
-pbp_test2$target_net_empty<-as.factor(pbp_test2$target_net_empty)
-pbp_test2$cross_ice<-as.factor(pbp_test2$cross_ice)
-pbp_test2$shot_side<-as.factor(pbp_test2$shot_side)
+pbp_test$event_detail<-as.factor(pbp_test$event_detail)
+pbp_test$is_rebound<-as.factor(pbp_test$is_rebound)
+pbp_test$is_rush<-as.factor(pbp_test$is_rush)
+pbp_test$shooter_net_empty<-as.factor(pbp_test$shooter_net_empty)
+pbp_test$target_net_empty<-as.factor(pbp_test$target_net_empty)
+pbp_test$cross_ice<-as.factor(pbp_test$cross_ice)
+pbp_test$shot_side<-as.factor(pbp_test$shot_side)
+pbp_test$event_zone<-as.factor(pbp_test$event_zone)
+pbp_test$is_cluster<-as.factor(pbp_test$is_cluster)
 ```
 
 Now we'll split the data randomly into in-sample test & train sets, then prepare the general recipe (or formula) that we want to feed into the model.
@@ -187,14 +210,14 @@ Now we'll split the data randomly into in-sample test & train sets, then prepare
 library(tidymodels)
 set.seed(seed = 2007)
 
-train_test_split <- initial_split(data = pbp2, prop = 0.80)
+train_test_split <- initial_split(data = pbp, prop = 0.75)
 
 train_data<-train_test_split %>% training()
 test_data<-train_test_split %>% testing()
 
 model_recipe <- 
-  recipe(is_goal ~ shot_distance + shot_angle + event_detail + is_rebound + is_rush +
-                   shooter_net_empty + target_net_empty + speed + attacker_benefit + 
+  recipe(is_goal ~ shot_distance + shot_angle + event_detail + is_rebound + is_rush + is_cluster +
+                   shooter_net_empty + target_net_empty + speed + attacker_benefit + event_zone +
                    shooter_goal_differential + shot_side + cross_ice + x_coord + y_coord,
          data = train_data) %>%
   update_role(x_coord, y_coord, new_role = "ID") 
@@ -233,9 +256,9 @@ Does it make sense?
 
 We've saved some data that we can use to test the predictor with. 
 ```{r check}
-pbp_test2$xG <- predict(xg_fit, pbp_test2, type = "prob")$.pred_1
+pbp_test$xG <- predict(xg_fit, pbp_test, type = "prob")$.pred_1
 
-avg_xG_by_coord <- pbp_test2 %>% group_by(x_coord, y_coord) %>%
+avg_xG_by_coord <- pbp_test %>% group_by(x_coord, y_coord) %>%
     summarise(xg = mean(xG))
 
 ggplot(avg_xG_by_coord, aes(x_coord, y_coord, fill = xg)) + geom_raster() +
@@ -250,20 +273,20 @@ ggplot(avg_xG_by_coord, aes(x_coord, y_coord, fill = xg)) + geom_raster() +
 
 We'll do some 'goodness of prediction' work now:
 ```{r roc}
-roc_tbl<-roc_curve(data = pbp_test2, is_goal, xG, event_level = 'second')
+roc_tbl<-roc_curve(data = pbp_test, is_goal, xG, event_level = 'second')
 ggplot(roc_tbl, aes(x = 1 - specificity, y = sensitivity)) +
   geom_abline(linetype = 2, slope = 1, intercept = 0) +
   geom_line(size = 1.2) +
   theme(aspect.ratio = 1)
 ```
 
-This gives us an auc of `r roc_auc(pbp_test2, is_goal, xG, event_level = 'second')`.
+This gives us an auc of `r roc_auc(pbp_test, is_goal, xG, event_level = 'second')`.
 
 # Look at the Data
 Lets take a look at the data from the test year: First player lists
 ```{r players}
-pbp_test2$is_goal<-as.integer(pbp_test2$is_goal)-1  # convert is_goal back to 1/0 integer instead of factor. -1 because factors are 1 indexed...
-xg_player <- pbp_test2 %>%
+pbp_test$is_goal<-as.integer(pbp_test$is_goal)-1  # convert is_goal back to 1/0 integer instead of factor. -1 because factors are 1 indexed...
+xg_player <- pbp_test %>%
     group_by(event_player_1, event_team) %>%
     summarise( xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
     arrange(desc(xG))
@@ -278,7 +301,7 @@ ggplot(aes(x = xG, y = Goals), data = xg_player) +
 
 Next, the same by team:
 ```{r teams}
-xg_team <- pbp_test2 %>%
+xg_team <- pbp_test %>%
     group_by(event_team) %>%
     summarise(xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
     arrange(desc(xG))
@@ -293,7 +316,7 @@ ggplot(aes(x = xG, y = Goals), data = xg_team) +
 
 Next, the same by game, splitting the two teams. This will give us an idea of xg prediction vs actual goals per team.
 ```{r games}
-xg_game <- pbp_test2 %>%
+xg_game <- pbp_test %>%
     group_by(game_id, event_team) %>%
     summarise(xG = sum(xG), Goals = sum(is_goal), Difference = sum(xG) - sum(is_goal)) %>%
     arrange(desc(xG))
@@ -308,7 +331,7 @@ ggplot(aes(x = xG, y = Goals), data = xg_game) +
 
 Lets look at the predictions of xG wins vs goal wins:
 ```{r xg_pred_win}
-xg_win <- pbp_test2 %>% 
+xg_win <- pbp_test %>% 
   group_by(game_id) %>% 
   summarize(
     homeG = sum(is_goal[is_home == 1]), 
