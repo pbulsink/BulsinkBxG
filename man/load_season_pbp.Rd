@@ -4,12 +4,10 @@
 \alias{load_season_pbp}
 \title{Load season PBP from File}
 \usage{
-load_season_pbp(year, data_dir = "~/NHLpbp")
+load_season_pbp(season)
 }
 \arguments{
-\item{year}{Season file to load}
-
-\item{data_dir}{location of raw data}
+\item{season}{Season file to load}
 }
 \value{
 pbp of whole season

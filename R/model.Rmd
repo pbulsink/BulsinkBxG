@@ -14,44 +14,51 @@ library(dplyr)
 
 ```
 
-#Intro
+# Intro
 
-This document will outline the creating of a xG model for use in the BulsinkB model (see [twitter.com/BulsinkB](https://www.twitter.com/BulsinkB)). This model bulding will use the tidymodels toolset and be based on excellent work by Matt Barlowe and Evolving Wild. 
+This document will outline the creating of a xG model for use in the BulsinkB model (see [twitter.com/BulsinkB](https://www.twitter.com/BulsinkB)). This model bulding will use the tidymodels toolset and be based on excellent work by Matt Barlowe and Evolving Wild.
 
-#Data
+# Data
 
 We'll start by loading data using the tools in this package, then combining all but the most recent season's data into one file:
+
 ```{r data_load}
-pbp2007<-readRDS("~/NHLpbp/2007.rds")
-pbp2008<-readRDS("~/NHLpbp/2008.rds")
-pbp2009<-readRDS("~/NHLpbp/2009.rds")
-pbp2010<-readRDS("~/NHLpbp/2010.rds")
-pbp2011<-readRDS("~/NHLpbp/2011.rds")
-pbp2012<-readRDS("~/NHLpbp/2012.rds")
-pbp2013<-readRDS("~/NHLpbp/2013.rds")
-pbp2014<-readRDS("~/NHLpbp/2014.rds")
-pbp2015<-readRDS("~/NHLpbp/2015.rds")
+#pbp2007<-readRDS("~/NHLpbp/2007.rds")
+#pbp2008<-readRDS("~/NHLpbp/2008.rds")
+#pbp2009<-readRDS("~/NHLpbp/2009.rds")
+#pbp2010<-readRDS("~/NHLpbp/2010.rds")
+#pbp2011<-readRDS("~/NHLpbp/2011.rds")
+#pbp2012<-readRDS("~/NHLpbp/2012.rds")
+#pbp2013<-readRDS("~/NHLpbp/2013.rds")
+#pbp2014<-readRDS("~/NHLpbp/2014.rds")
+#pbp2015<-readRDS("~/NHLpbp/2015.rds")
 pbp2016<-readRDS("~/NHLpbp/2016.rds")
 pbp2017<-readRDS("~/NHLpbp/2017.rds")
 pbp2018<-readRDS("~/NHLpbp/2018.rds")
-#pbp2019<-readRDS("~/NHLpbp/2019.rds")
+pbp2019<-readRDS("~/NHLpbp/2019.rds")
 
-pbp<-dplyr::bind_rows(pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015, pbp2016, pbp2017)#, pbp2018)
-pbp_test<-pbp2018
+pbp<-dplyr::bind_rows(#pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015,
+  pbp2016, pbp2017, pbp2018)
+pbp_test<-pbp2019
 
 #Get rid of year files: we don't need them in memory anymore
-rm(pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015, pbp2016, pbp2017, pbp2018, pbp2019)
+rm(#pbp2007, pbp2008, pbp2009, pbp2010, pbp2011, pbp2012, pbp2013, pbp2014, pbp2015, 
+   pbp2016, pbp2017, pbp2018, pbp2019)
+
+gc(verbose = FALSE)
 ```
 
 Note that we'll use 2019 (current season) data as the test to see how well the model predicts. How much data do we have? The number of events in the training (2007 - 2018) data is `r nrow(pbp)` and the number of rows in the testing 2019 data is `r nrow(pbp_test)`
 
 Now some more shortcut prep:
+
 ```{r prep}
 fenwick_events <- c('SHOT', 'MISS', 'GOAL')
 corsi_events <- c('SHOT', 'MISS', 'GOAL', 'BLOCK')
 ```
 
-##Data Munching
+## Data Munching 
+
 We'll use Fenwick data here: the NHL PBP doesn't provide the shooter location on a shot-block event. So we'll start paring down the data. Note that we're also selecting the immediately preceding event for some feature testing down the road.
 
 ```{r fenwick_cut}
@@ -68,6 +75,10 @@ pbp_test<-pbp_test %>%
 
 That has quickly reduced our data size: we now have `r nrow(pbp)` training rows and `r nrow(pbp_test)` test rows.
 
+```{r gc, echo=F, eval=T, messages=F, warnings=F}
+gc(verbose = F)
+```
+
 We'll now move on by adding a bunch of data columns (and maybe dropping a few too). This feature addition is not changing the data, but just re-phrasing it in a way that a model can use it to make predictions. This is where the 'art' of data science lives.
 
 ```{r features}
@@ -76,7 +87,8 @@ prep_data<-function(data){
     mutate(is_home = if_else(event_team == home_team, 1, 0),  # binary home team event factor
            is_goal = if_else(event_type == "GOAL", 1, 0),  # binary is goal factor
            x_coord = abs(coords_x),  # absolute x coordinate - put home and away on same side of ice
-           y_coord = if_else(coords_x < 0, coords_y * -1, coords_y)) %>%  # absolute y coordinate - for calculations
+           y_coord = if_else(coords_x < 0, coords_y * -1, coords_y), # absolute y coordinate - for calculations
+           event_id = paste0(game_id, "-", event_index)) %>%   # Fully unique event id for each event
   #calculate time_diff but only use the game, don't revert to previous game in data stack
     group_by(game_id) %>%
       arrange(event_index, .by_group = TRUE) %>%
@@ -127,17 +139,17 @@ prep_data<-function(data){
            shooter_net_empty = if_else((is_home == 1 & is.na(home_goalie)) | (!is_home == 1 & is.na(away_goalie)), 1, 0),  # Is the shooter's goalie pulled?
            target_net_empty = if_else((is_home == 1 & is.na(away_goalie)) | (!is_home == 1 & is.na(home_goalie)), 1, 0),  # Is the target goalie pulled?
            shooter_gd = if_else(is_home == 1, home_score - away_score, away_score - home_score),# What's the score impact?
-           shooter_goal_differential = case_when(shooter_gd <= -5 ~ "-5+",
-                                                 shooter_gd == -4 ~ "-4",
-                                                 shooter_gd == -3 ~ "-3",
-                                                 shooter_gd == -2 ~ "-2",
-                                                 shooter_gd == -1 ~ "-1",
+           shooter_goal_differential = case_when(shooter_gd <= -5 ~ "m5",
+                                                 shooter_gd == -4 ~ "m4",
+                                                 shooter_gd == -3 ~ "m3",
+                                                 shooter_gd == -2 ~ "m2",
+                                                 shooter_gd == -1 ~ "m1",
                                                  shooter_gd == 0 ~ "0",
-                                                 shooter_gd == 1 ~ "+1",
-                                                 shooter_gd == 2 ~ "+2",
-                                                 shooter_gd == 3 ~ "+3",
-                                                 shooter_gd == 4 ~ "+4",
-                                                 shooter_gd >=5 ~ "+5+",
+                                                 shooter_gd == 1 ~ "p1",
+                                                 shooter_gd == 2 ~ "p2",
+                                                 shooter_gd == 3 ~ "p3",
+                                                 shooter_gd == 4 ~ "p4",
+                                                 shooter_gd >= 5 ~ "p5",
                                                  TRUE ~ "UNK")
            ) %>%
     mutate(result = factor(is_goal, c(0,1), c('no_goal', 'goal')))  # %>%
@@ -150,15 +162,16 @@ pbp_test <- pbp_test %>% prep_data()
 
 ```
 
-#Modelling
-We'll be using the tidymodels package in R to do the actual modeling. There are a few more things to do with the data to prepare it for tidymodels.
-Now we'll split the data randomly into in-sample test & train sets, then prepare the general recipe (or formula) that we want to feed into the model.
+# Modelling 
+
+We'll be using the tidymodels package in R to do the actual modeling. There are a few more things to do with the data to prepare it for tidymodels. Now we'll split the data randomly into in-sample test & train sets, then prepare the general recipe (or formula) that we want to feed into the model.
+
 ```{r tidymodel_recipe}
 library(tidymodels)
 
 set.seed(seed = 2007)
 
-train_test_split <- initial_split(data = pbp, prop = 0.75)
+train_test_split <- initial_split(data = pbp, strata='result')
 
 train_data<-train_test_split %>% training()
 test_data<-train_test_split %>% testing()
@@ -168,7 +181,7 @@ model_recipe <-
                    shooter_net_empty + target_net_empty + speed + attacker_benefit + event_zone +
                    shooter_goal_differential + shot_side + cross_ice + x_coord + y_coord,
          data = train_data) %>%
-  update_role(x_coord, y_coord, new_role = "ID") %>%
+  step_downsample(result) %>%
   step_string2factor(event_detail, event_zone, shot_side, shooter_goal_differential) %>%
   step_num2factor(is_rebound, transform = function(x) x+1, levels = c("no", "yes")) %>%
   step_num2factor(is_rush, transform = function(x) x+1, levels = c("no", "yes")) %>%
@@ -176,39 +189,144 @@ model_recipe <-
   step_num2factor(target_net_empty,transform = function(x) x+1, levels = c("no", "yes")) %>%
   step_num2factor(cross_ice, transform = function(x) x+1, levels = c("no", "yes")) %>%
   step_num2factor(is_cluster,transform = function(x) x+1, levels = c("no", "yes")) %>%
-  step_zv(all_predictors())
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_zv(all_numeric()) %>%
+  step_normalize(all_numeric()) %>%
+  prep()
+
+test_proc<-bake(model_recipe, new_data=test_data)
 
 summary(model_recipe)
 ```
 
+Now we can define our model (this is the bit that is changeable) then feed that design into the modeling workflow. Then we fit it.
 
-Now we can define our model (this is the bit that is changeable) then feed that design into the modeling workflow. Then wqe fit it.
+```{r glm_model_design}
+glm_spec <- logistic_reg() %>%
+  set_engine('glm') %>%
+  set_mode('classification')
 
-```{r model_design}
-model <- logistic_reg() %>%
-  set_engine('glm')
+glm_fit <- glm_spec %>%
+  fit(result ~ ., data = juice(model_recipe))
+```
+GLM with resampling (i know) to get metrics:
 
-xg_wflow<-workflow() %>%
-  add_model(model) %>%
-  add_recipe(model_recipe)
+```{r resample_glm}
+validation_splits <- mc_cv(juice(model_recipe), prop = 0.9, strata = result)
 
-#xg_wflow
+glm_res <- fit_resamples(
+  glm_spec,
+  result ~ .,
+  validation_splits,
+  control = control_resamples(save_pred = TRUE)
+)
 
-xg_fit <- xg_wflow %>%
-  fit(data = train_data)
+glm_res %>%
+  collect_metrics()
 
-xg_fit %>% 
-  pull_workflow_fit() %>% 
-  tidy()
+glm_res %>%
+  unnest(.predictions) %>%
+  mutate(model = "glm") %>%
+  roc_curve(result, .pred_goal) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity)) +
+  geom_line(size = 1.5) +
+  geom_abline(
+      lty = 2, alpha = 0.5,
+      color = "gray50",
+      size = 1.2
+  )
 ```
 
+```{r xgboost_model_design}
+# https://juliasilge.com/blog/xgboost-tune-volleyball/
+# https://www.r-bloggers.com/2020/05/using-xgboost-with-tidymodels/
 
-#Checking Model Output
-Does it make sense?
+xgb_spec <- boost_tree(
+  trees = 1000, 
+  tree_depth = tune(), min_n = tune(), 
+  loss_reduction = tune(),                     ## first three: model complexity
+  sample_size = tune(), mtry = tune(),         ## randomness
+  learn_rate = tune(),                         ## step size
+) %>% 
+  set_engine("xgboost") %>% 
+  set_mode("classification")
 
-We've saved some data that we can use to test the predictor with. 
+xgb_grid <- grid_latin_hypercube(
+  tree_depth(),
+  min_n(),
+  loss_reduction(),
+  sample_size = sample_prop(),
+  finalize(mtry(), train_data),
+  learn_rate(),
+  size = 30
+)
+
+xgb_wf <- workflow() %>%
+  add_model(xgb_spec) %>%
+  add_formula(result ~ .)
+
+xg_folds <- vfold_cv(juice(model_recipe), strata = result)
+
+doParallel::registerDoParallel(cores = 7)
+
+set.seed(1234)
+xgb_res <- tune_grid(
+  xgb_wf,
+  resamples = xg_folds,
+  grid = xgb_grid,
+  control = control_grid(save_pred = TRUE)
+)
+
+show_best(xgb_res, "roc_auc")
+
+best_auc <- select_best(xgb_res, "roc_auc")
+
+final_xgb <- xgb_wf %>%
+  finalize_workflow(best_auc) %>%
+  fit(data = juice(model_recipe))
+
+final_xgb
+
+```
+
+# Checking Model Output: Data Science Tools
+
+Let's start by visualizing all of the important variable:
+```{r vip}
+library(vip)
+
+final_xgb %>%
+  pull_workflow_fit() %>%
+  vip(geom = "point")
+```
+
+Check our metrics against the testing holdout:
+```{r final_res}
+final_res <- last_fit(final_xgb, train_test_split)
+
+collect_metrics(final_res)
+```
+
+Look at the ROC plot
+```{r roc}
+final_res %>%
+  collect_predictions() %>%
+  roc_curve(result, .pred_goal) %>%
+  ggplot(aes(y = 1 - specificity, x = sensitivity)) +
+  geom_line(size = 1.5, color = "midnightblue") +
+  geom_abline(
+    lty = 2, alpha = 0.5,
+    color = "gray50",
+    size = 1.2
+  )
+```
+
+# Checking Model Output: Domain Knowledge
+
+We've saved some data that we can use to test the predictor with.
+
 ```{r check}
-pbp_test$xG <- predict(xg_fit, pbp_test, type = "prob")$.pred_goal
+pbp_test$xG <- predict(final_xgb, new_data = bake(model_recipe, new_data=pbp_test), type = "prob")$.pred_goal
 
 avg_xG_by_coord <- pbp_test %>% group_by(x_coord, y_coord) %>%
     summarise(xg = mean(xG))
@@ -224,14 +342,17 @@ ggplot(avg_xG_by_coord, aes(x_coord, y_coord, fill = xg)) + geom_raster() +
 ```
 
 We'll do some 'goodness of prediction' work now:
+
 ```{r roc}
 pbp_test %>% roc_curve(result, xG, event_level = 'second') %>% autoplot()
 ```
 
-This gives us an auc of `r roc_auc(pbp_test, result, xG, event_level = 'second')`. My first attempt at a model had AUC of 0.746 (@git commit ae73f75, glm model). My best attempt is 0.755 (@git commit fb6446b, glm model).
+This gives us an auc of `r roc_auc(pbp_test, result, xG, event_level = 'second')`. My first attempt at a model had AUC of 0.746 ([@git] commit ae73f75, glm model). My best attempt is 0.766 ([@git] commit 9d61ec2, glm model).
 
 # Look at the Data
+
 Lets take a look at the data from the test year: First player lists
+
 ```{r players}
 xg_player <- pbp_test %>%
     group_by(event_player_1, event_team) %>%
@@ -247,6 +368,7 @@ ggplot(aes(x = xG, y = Goals), data = xg_player) +
 ```
 
 Next, the same by team:
+
 ```{r teams}
 xg_team <- pbp_test %>%
     group_by(event_team) %>%
@@ -262,6 +384,7 @@ ggplot(aes(x = xG, y = Goals), data = xg_team) +
 ```
 
 Next, the same by game, splitting the two teams. This will give us an idea of xg prediction vs actual goals per team.
+
 ```{r games}
 xg_game <- pbp_test %>%
     group_by(game_id, event_team) %>%
@@ -277,6 +400,7 @@ ggplot(aes(x = xG, y = Goals), data = xg_game) +
 ```
 
 Lets look at the predictions of xG wins vs goal wins:
+
 ```{r xg_pred_win}
 xg_win <- pbp_test %>% 
   group_by(game_id) %>% 
@@ -289,7 +413,7 @@ xg_win <- pbp_test %>%
     xg_win=ifelse(home_xg>away_xg, 'home', 'away'), 
     agree=g_win==xg_win)
 ```
-It looks like xG predicts winners `r *sum(xg_win$agree)/nrow(xg_win))*100`% of the time.
 
+It looks like xG predicts winners `r (sum(xg_win$agree)/nrow(xg_win))*100`% of the time.
 
 Conclusion

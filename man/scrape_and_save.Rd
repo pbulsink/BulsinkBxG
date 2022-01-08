@@ -4,22 +4,13 @@
 \alias{scrape_and_save}
 \title{Scrape and Save}
 \usage{
-scrape_and_save(
-  scrapegames,
-  data_dir = "~/NHLpbp",
-  ignore_downloads = FALSE,
-  ...
-)
+scrape_and_save(gameIds, overwrite_downloads = FALSE)
 }
 \arguments{
-\item{scrapegames}{game ids to scrape}
+\item{gameIds}{game ids to scrape}
 
-\item{data_dir}{direcory in which to save games}
-
-\item{ignore_downloads}{If true, will re-download games. Else only try for missing games}
-
-\item{...}{additional parameters to pass to scraper}
+\item{overwrite_downloads}{If true, will re-download games. Else only try for missing games}
 }
 \description{
-Scrape games with EW's scraper and save the files in a directory
+Scrape games and save the raw files in a directory
 }

@@ -4,12 +4,10 @@
 \alias{compile_season}
 \title{Compile PBP to single season file}
 \usage{
-compile_season(year, data_dir = "~/NHLpbp")
+compile_season(season)
 }
 \arguments{
-\item{year}{Season to compile to file}
-
-\item{data_dir}{location of raw data}
+\item{season}{Season to compile to file}
 }
 \value{
 pbp of whole season
