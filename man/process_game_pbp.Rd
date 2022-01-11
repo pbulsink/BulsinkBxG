@@ -13,5 +13,5 @@ process_game_pbp(gameId)
 a pbp data frame or invisible.
 }
 \description{
-Given a GameId, try to load and process the feed and shifts file to one pbp. Saves a file back in the default data directory named `[gameId]_pbp.RDS`
+Given a GameId, try to load and process the feed and shifts file to one pbp. Saves a file back in the default data directory named \verb{[gameId]_pbp.RDS}
 }

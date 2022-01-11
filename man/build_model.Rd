@@ -9,10 +9,10 @@ build_model(season, save_model = TRUE)
 \arguments{
 \item{season}{The season for which to build the model. Must be 2012 or later.}
 
-\item{save_model}{Whether to write the model to RDS file to be used later. File saved to default data directory, then `.../model/[season]_model.RDS`}
+\item{save_model}{Whether to write the model to RDS file to be used later. File saved to default data directory, then \verb{.../model/[season]_model.RDS}}
 }
 \value{
-invisibly a model and the metrics against the training set. The model output can be used directly with `predict()`
+invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with \code{predict()}
 }
 \description{
 The model is built on a past 3 years of data as xG change over time. The model for 2021 is built with 2018, 2019, 2020 seasons. 2012 and 2013 are built with one and two seasons only, respecitvely.

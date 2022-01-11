@@ -1,0 +1,99 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# BulsinkBxG
+
+<!-- badges: start -->
+
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R-CMD-check](https://github.com/pbulsink/BulsinkBxG/workflows/R-CMD-check/badge.svg)](https://github.com/pbulsink/BulsinkBxG/actions)
+
+<!-- badges: end -->
+
+The goal of BulsinkBxG is to share a basic Expected Goals (xG) model for NHL data from the year 2011 and onward. Expected Goals are generated from shot data, taking into consideration details about the shot like distance and angle to the net, whether the shot is a rebound, etc. By modelling across seasons of data, we're able to assign a value of how likely each shot was to becoming a goal. This in turn can show teams that have performed well (i.e. produced lots of high-quality shot attempts) despite scoring few goals. Expected goals can also be used to highlight players with good (or bad) impacts on their team (either producing xG above or below average, or having more or less xG against than their teammates).
+
+## Installation
+
+You can install the released version of BulsinkBxG from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("pbulsink/BulsinkBxG")
+```
+
+## Example
+
+The default xG models for each playing year from 2012 onward are included in this package. They are produced using up to the past 3 seasons' data and validated against the target season.
+
+```{r example}
+library(BulsinkBxG)
+
+#load the model for analyzing the 2012 season data:
+model_2012 <- load_season_model(2012)
+
+#load the pbp data for 2012:
+pbp_2012 <- load_season_pbp(2012)
+
+#filter pbp data to (fenwick) shot attempts only:
+pbp_fenwick_2012 <- pbp_2012 %>%
+  dplyr::filter(.data$event %in% c('Shot', 'Missed Shot', 'Miss', 'Goal'))
+
+#predict an xG value for each shot attempt:
+pbp_fenwick_2012$xG <- predict(model_2012, new_data = pbp_fenwick_2012, type = "prob")$.pred_goal
+```
+
+We can plot the xG expected by location to see the effect of distance and angle:
+
+```{r plot_xg_xy}
+library(ggplot)
+avg_xG_by_coord <- pbp_fenwick_2012 %>% group_by(.data$x_coord, .data$y_coord) %>%
+    summarise(xg_mean = mean(xG))
+
+ggplot(avg_xG_by_coord, aes(x_coord, y_coord, fill = xg_mean)) + geom_raster() +
+    scale_fill_gradient(low = 'blue', high = 'red')+
+    geom_vline(xintercept = 0, color = 'red') +
+    geom_vline(xintercept = 25, color = 'blue') +
+    geom_vline(xintercept = 88, color = 'red') +
+    xlab('X Coordinates') + ylab('Y Coordinates') +
+    labs(title = 'Average xG Value by Coordinate')
+```
+
+## Data Storage
+
+The package also contains the code to download and process the NHL's Play by Play (pbp) & shift data to train your own version of the model. The data is stored (by default) in the folder `~/NHLpbp` on your local device. If you wish to change this location, set the value of the option `BulsinkBxG.data.path` either interactively or in your .RProfile by the following command:
+
+```option("BulsinkBxG.data.path" = [new path])```
+
+## Model Performance Metrics
+
+The model provides the following performance by each year:
+
+| Season | Accuracy | ROC AUC | Sum (xG) - Sum(G) |
+|--------|----------|---------|-------------------|
+| 2012   |          |         |                   |
+| 2013   |          |         |                   |
+| 2014   |          |         |                   |
+| 2015   |          |         |                   |
+| 2016   |          |         |                   |
+| 2017   |          |         |                   |
+| 2018   |          |         |                   |
+| 2019   |          |         |                   |
+| 2020   |          |         |                   |
+| 2021   | --       | --      | --                |
+
+## Code of Conduct
+
+Please note that the BulsinkBxG project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/0/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms.
+

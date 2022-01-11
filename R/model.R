@@ -205,8 +205,10 @@ adjust_for_rink_bias <- function(data, season, backchecking = FALSE){
 #' @param season The season for which to build the model. Must be 2012 or later.
 #' @param save_model Whether to write the model to RDS file to be used later. File saved to default data directory, then `.../model/[season]_model.RDS`
 #'
-#' @return invisibly a model and the metrics against the training set. The model output can be used directly with `predict()`
+#' @return invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with `predict()`
 #' @export
+#'
+#' `r lifecycle::badge('experimental')`
 build_model<-function(season, save_model=TRUE){
   stopifnot(is.numeric(season))
   stopifnot(season > 2011)
@@ -288,7 +290,6 @@ build_model<-function(season, save_model=TRUE){
     size = 30
   )
 
-  message("tuning model")
   xgb_wf <- workflows::workflow() %>%
     workflows::add_recipe(model_recipe) %>%#, blueprint = hardhat::default_recipe_blueprint(allow_novel_levels = TRUE)) %>%
     #workflows::add_formula(is_goal ~ .) %>%
@@ -316,16 +317,58 @@ build_model<-function(season, save_model=TRUE){
     parsnip::fit(data = train_data)
 
   #final_xgb
-
   message('testing model')
-  final_res <- yardstick::last_fit(final_xgb,
+  final_res <- tune::last_fit(final_xgb,
                                    train_test_split,
                                    metrics = yardstick::metric_set(yardstick::accuracy, yardstick::roc_auc, yardstick::mn_log_loss, tes))
 
   xgb_wf_model <- final_xgb$.workflow[[1]]
 
   if(save_model){
-    saveRDS(xgb_wf_model, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
+    saveRDS(final_xgb, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
   }
-  return(list(model=xgb_wf_model, metrics=tune::collect_metrics(final_res)))
+
+  return(list(model=final_xgb, metrics=tune::collect_metrics(final_res)))
+}
+
+
+build_save_past_models <- function(){
+  purrr::walk(2012:2021, function(x) build_model(x))
+}
+
+test_model <- function(model, test_data, metrics = NULL){
+  if (is.null(metrics)){
+    metrics <- yardstick::metric_set(yardstick::accuracy, yardstick::roc_auc, yardstick::mn_log_loss, tes)
+  }
+
+  test_data$.pred <- predict(model, new_data = test_data)$.pred_goal
+
+  m<- yardstick::metrics(data = test_data, metrics = metrics)
+
+  return(m)
+}
+
+
+#' Load Season Model
+#'
+#' @description This function will load the season model from a file. If it does not exist, it will attempt to download from GitHub. Thus, if you plan to make your own xG model based on this code, please use `build_model[BulsinkBxG::build_model]` instead.
+#' @param season The season's xG model to load
+#'
+#' @return a xG model.
+#' @export
+load_season_model<-function(season){
+  stopifnot(season %in% 2012:2021)
+
+  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")))) {
+    model<-readRDS(file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
+  } else {
+    message("Downloading season model from GitHub")
+
+    giturl<-paste0("https://raw.githubusercontent.com/pbulsink/BulsinkBxG/main/data-raw/", season, "_model.RDS")
+    download.file(giturl, file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")), method="curl")
+    model<-readRDS(file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
+  }
+
+  return(model)
+
 }

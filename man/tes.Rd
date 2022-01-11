@@ -19,21 +19,21 @@ tes_vec(
 )
 }
 \arguments{
-\item{data}{a `data.frame` containting the `truth` and `estimate` columns.}
+\item{data}{a \code{data.frame} containting the \code{truth} and \code{estimate} columns.}
 
 \item{...}{not in use}
 
-\item{truth}{The column identifier for the true results (that is `numeric`). This should be an unquoted column name although this argument is passed by expression and supports quasiquotation (you can unquote column names).}
+\item{truth}{The column identifier for the true results (that is \code{numeric}). This should be an unquoted column name although this argument is passed by expression and supports quasiquotation (you can unquote column names).}
 
-\item{na_rm}{A `logical` value indicating whether NA values should be stripped before the computation proceeds.}
+\item{na_rm}{A \code{logical} value indicating whether NA values should be stripped before the computation proceeds.}
 
-\item{estimate}{The column identifier for the predicted results (that is also `numeric`). As with `truth` this can be specified different ways but the primary method is to use an unquoted variable name.}
+\item{estimate}{The column identifier for the predicted results (that is also \code{numeric}). As with \code{truth} this can be specified different ways but the primary method is to use an unquoted variable name.}
 }
 \value{
 A tibble with columns .metric, .estimator, and .estimate and 1 row of values.
 }
 \description{
-Calculate the total error sum. `tes()` is a metric that is in the same units as the original data (squared). Total error sum adds up the 'truth' values and the 'predicted' values and squares the difference between the two.
+Calculate the total error sum. \code{tes()} is a metric that is in the same units as the original data (squared). Total error sum adds up the 'truth' values and the 'predicted' values and squares the difference between the two.
 }
 \examples{
 \dontrun{

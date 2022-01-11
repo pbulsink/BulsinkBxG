@@ -14,7 +14,7 @@ get_player_stat(playerId = numeric(), stat = NULL, player_db = NULL)
 \item{player_db}{passed, or loaded from the file.}
 }
 \value{
-a vector of `stat`
+a vector of \code{stat}
 }
 \description{
 Get Player Stat
