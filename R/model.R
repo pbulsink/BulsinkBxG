@@ -54,7 +54,7 @@ prep_xg_model_data<-function(pbp){
     dplyr::mutate(shot_side = dplyr::if_else(abs(.data$y_coord) <= 3, "Mid", .data$shot_side)) %>%
     dplyr::mutate(hand_position = get_player_stat(.data$shooter_id, stat=c('shoots_catches','primary_position_abbreviation'))) %>%
     tidyr::separate(.data$hand_position, c("shooter_hand", "shooter_position"), sep = ",", remove=TRUE) %>%
-    dplyr::mutate(shooter_position = dplyr::if_else(is.na(shooter_position), "Unk", .data$shooter_position, "Unk")) %>%
+    dplyr::mutate(shooter_position = dplyr::if_else(is.na(.data$shooter_position), "Unk", .data$shooter_position, "Unk")) %>%
     dplyr::mutate(goalie_glove = get_player_stat(.data$goalie_id, stat='shoots_catches')) %>%
     dplyr::mutate(is_shooter_strong_side = dplyr::case_when(.data$shooter_hand =="L" & .data$shot_side == "R" ~ 1,
                                                          .data$shooter_hand =="R" & .data$shot_side == "L" ~ 1,
@@ -200,26 +200,30 @@ adjust_for_rink_bias <- function(data, season, backchecking = FALSE){
 
 #' Build xG model
 #'
-#' @description The model is built on a past 3 years of data as xG change over time. The model for 2021 is built with 2018, 2019, 2020 seasons. 2012 and 2013 are built with one and two seasons only, respecitvely.
+#' @description The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons. 2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+#'
+#' `r lifecycle::badge('experimental')`
 #'
 #' @param season The season for which to build the model. Must be 2012 or later.
 #' @param save_model Whether to write the model to RDS file to be used later. File saved to default data directory, then `.../model/[season]_model.RDS`
 #'
 #' @return invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with `predict()`
 #' @export
-#'
-#' `r lifecycle::badge('experimental')`
 build_model<-function(season, save_model=TRUE){
   stopifnot(is.numeric(season))
-  stopifnot(season > 2011)
+  stopifnot(season >= 2011)
   stopifnot(season <= as.numeric(strftime(Sys.Date(), '%Y')))
   fenwick_events <- c('Shot', 'Missed Shot', 'Miss', 'Goal')
+
+  if(season == 2011){
+    warning("Season 2011 will be built using 2011-2012 data (i.e. no out-of-season data.")
+  }
 
   if(season >= 2014){
     pbp<-dplyr::bind_rows(load_prepped_data(season-1), load_prepped_data(season-2), load_prepped_data(season-3))
   } else if (season == 2013){
     pbp<-dplyr::bind_rows(load_prepped_data(2011), load_prepped_data(2012))
-  } else if (season == 2012) {
+  } else if (season <= 2012) {
     pbp<-load_prepped_data(2011)
   }
 
@@ -231,7 +235,7 @@ build_model<-function(season, save_model=TRUE){
                     'shooter_pp_time', 'shooter_pp_time_remaining', 'goalie_pp_time', 'goalie_pp_time_remaining', 'is_even_strength',
                     'ordinal_goal_differential', 'x_coord', 'y_coord', 'event_id', 'previous_event'))
 
-  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_data.rds")))){
+  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_data.rds"))) & season > 2011){
     tdata<-readRDS(file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_data.rds")))
     tdata<-tdata %>%
       dplyr::filter(.data$event %in% fenwick_events) %>%
@@ -259,9 +263,9 @@ build_model<-function(season, save_model=TRUE){
   model_recipe <-
     recipes::recipe(result ~ ., data = train_data) %>%
     #themis::step_downsample(is_goal, under_ratio = 5) %>%
-    recipes::update_role(event_id, new_role = "ID") %>%
+    recipes::update_role(.data$event_id, new_role = "ID") %>%
     recipes::step_novel(recipes::all_predictors(),-recipes::all_numeric()) %>%
-    recipes::step_naomit(adjusted_distance, shot_angle, x_coord, y_coord, skip = TRUE) %>%
+    recipes::step_naomit(.data$adjusted_distance, .data$shot_angle, .data$x_coord, .data$y_coord, skip = TRUE) %>%
     recipes::step_dummy(recipes::all_predictors(),-recipes::all_numeric()) #%>%
     #recipes::prep() ## turns out feeding in new data is harder if the recipe is prepped? whatever that means.
 
@@ -322,9 +326,12 @@ build_model<-function(season, save_model=TRUE){
                                    train_test_split,
                                    metrics = yardstick::metric_set(yardstick::accuracy, yardstick::roc_auc, yardstick::mn_log_loss, tes))
 
-  xgb_wf_model <- final_xgb$.workflow[[1]]
+  #xgb_wf_model <- final_xgb$.workflow[[1]]
 
   if(save_model){
+    if(!dir.exists(file.path(getOption("BulsinkBxG.data.path"), 'models'))){
+      dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))
+    }
     saveRDS(final_xgb, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
   }
 
@@ -336,14 +343,15 @@ build_save_past_models <- function(){
   purrr::walk(2012:2021, function(x) build_model(x))
 }
 
+
 test_model <- function(model, test_data, metrics = NULL){
   if (is.null(metrics)){
     metrics <- yardstick::metric_set(yardstick::accuracy, yardstick::roc_auc, yardstick::mn_log_loss, tes)
   }
 
-  test_data$.pred <- predict(model, new_data = test_data)$.pred_goal
+  test_data$.pred <- stats::predict(model, new_data = test_data)$.pred_goal
 
-  m<- yardstick::metrics(data = test_data, metrics = metrics)
+  m <- yardstick::metrics(data = test_data, metrics = metrics)
 
   return(m)
 }
@@ -357,18 +365,23 @@ test_model <- function(model, test_data, metrics = NULL){
 #' @return a xG model.
 #' @export
 load_season_model<-function(season){
-  stopifnot(season %in% 2012:2021)
+  stopifnot(season >= 2011)
 
-  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")))) {
-    model<-readRDS(file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
-  } else {
+  if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")))) {
+
     message("Downloading season model from GitHub")
 
-    giturl<-paste0("https://raw.githubusercontent.com/pbulsink/BulsinkBxG/main/data-raw/", season, "_model.RDS")
-    download.file(giturl, file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")), method="curl")
+    git_url<-paste0("https://raw.githubusercontent.com/pbulsink/BulsinkBxG/main/data-raw/", season, "_model.RDS")
+    if(!dir.exists(file.path(getOption("BulsinkBxG.data.path"), 'models'))){
+      dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))
+    }
+    utils::download.file(git_url, file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")), method="curl")
+  }
+  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")))){
     model<-readRDS(file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
+  } else {
+    stop("File was not found and could not be loaded")
   }
 
   return(model)
-
 }

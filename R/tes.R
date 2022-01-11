@@ -6,6 +6,7 @@
 #' @param truth The column identifier for the true results (that is `numeric`). This should be an unquoted column name although this argument is passed by expression and supports quasiquotation (you can unquote column names).
 #' @param estimate 	The column identifier for the predicted results (that is also `numeric`). As with `truth` this can be specified different ways but the primary method is to use an unquoted variable name.
 #' @param na_rm A `logical` value indicating whether NA values should be stripped before the computation proceeds.
+#' @param event_level 	A single string. Either "`first`" or "`second`" to specify which level of `truth` to consider as the "event". The default uses an internal helper that generally defaults to "`first`", however, if the deprecated global option `yardstick.event_first` is set, that will be used instead with a warning.
 #' @param ... not in use
 #'
 #' @return A tibble with columns .metric, .estimator, and .estimate and 1 row of values.
@@ -35,14 +36,14 @@ tes.data.frame <- function(data,
                            truth,
                            ...,
                            na_rm = TRUE,
-                           event_level = yardstick_event_level()) {
-  estimate <- dots_to_estimate(data, !!! enquos(...))
+                           event_level = yardstick:::yardstick_event_level()) {
+  estimate <- yardstick::dots_to_estimate(data, !!! rlang::enquos(...))
 
-  metric_summarizer(
+  yardstick::metric_summarizer(
     metric_nm = "tes",
     metric_fn = tes_vec,
     data = data,
-    truth = !!enquo(truth),
+    truth = !!rlang::enquo(truth),
     estimate = !!estimate,
     na_rm = na_rm,
     event_level = event_level
@@ -54,16 +55,16 @@ tes.data.frame <- function(data,
 tes_vec <- function(truth,
                     estimate,
                     na_rm = TRUE,
-                    event_level = yardstick_event_level(),
+                    event_level = yardstick:::yardstick_event_level(),
                     ...) {
-  estimator <- finalize_estimator(truth, metric_class = "tes")
+  estimator <- yardstick::finalize_estimator(truth, metric_class = "tes")
 
   # estimate here is a matrix of class prob columns
   tes_impl <- function(truth, estimate) {
     tes_estimator_impl(truth, estimate, estimator, event_level)
   }
 
-  metric_vec_template(
+  yardstick::metric_vec_template(
     metric_impl = tes_impl,
     truth = truth,
     estimate = estimate,
@@ -85,7 +86,7 @@ tes_estimator_impl <- function(truth, estimate, estimator, event_level) {
 tes_binary <- function(truth, estimate, event_level) {
   if (!yardstick:::is_event_first(event_level)) {
     lvls <- levels(truth)
-    truth <- relevel(truth, lvls[[2]])
+    truth <- stats::relevel(truth, lvls[[2]])
   }
 
   estimate <- matrix(c(estimate, 1 - estimate), ncol = 2)

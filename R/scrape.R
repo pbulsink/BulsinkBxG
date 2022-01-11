@@ -71,6 +71,7 @@ s_s_all_seasons<-function(){
 
 
 ## With componets from fastRhockey
+#' @importFrom rlang .data
 scrape_game_feed<-function(game_id){
   stopifnot(is_valid_gameId(game_id))
 
@@ -182,6 +183,7 @@ scrape_game_feed<-function(game_id){
 
 
 ## With components from fastRhockey
+#' @importFrom rlang .data
 scrape_game_shifts<-function(game_id){
   stopifnot(is_valid_gameId(game_id))
   base_url <- "https://api.nhle.com/stats/rest/en/shiftcharts?cayenneExp=gameId="

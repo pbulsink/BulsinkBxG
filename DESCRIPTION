@@ -31,13 +31,13 @@ Imports:
     tibble,
     tune,
     workflows,
-    themis,
     forcats,
     hardhat,
-    lifecycle
-Suggests: 
     xgboost,
     doParallel
+Suggests: 
+    lifecycle,
+    testthat
 Depends: 
     R (>= 2.10)
 Roxygen: list(markdown = TRUE)

@@ -35,7 +35,7 @@ devtools::install_github("pbulsink/BulsinkBxG")
 
 ## Example
 
-The default xG models for each playing year from 2012 onward are included in this package. They are produced using up to the past 3 seasons' data and validated against the target season.
+The default xG models for each playing year from 2011 onward are included in this package. They are produced using up to the past 3 seasons' data and validated against the target season. Model are loaded using the `load_season_model()` function.
 
 ```{r example}
 library(BulsinkBxG)
@@ -70,13 +70,53 @@ ggplot(avg_xG_by_coord, aes(x_coord, y_coord, fill = xg_mean)) + geom_raster() +
     labs(title = 'Average xG Value by Coordinate')
 ```
 
+
+# Building your own xG model
+
+This package contains the required tools to download, parse, and reprocess the NHL's Play by Play (pbp) and shift data to build your own data set. This can be used to build your own xG model or other analytics.
+
 ## Data Storage
 
 The package also contains the code to download and process the NHL's Play by Play (pbp) & shift data to train your own version of the model. The data is stored (by default) in the folder `~/NHLpbp` on your local device. If you wish to change this location, set the value of the option `BulsinkBxG.data.path` either interactively or in your .RProfile by the following command:
 
 ```option("BulsinkBxG.data.path" = [new path])```
 
-## Model Performance Metrics
+## Downloading the Data
+
+The first step is to run the following code to download and process the pbp and shift data, provinding a season:
+```{r pbp, eval=FALSE}
+pbp<-process_season_pbp(2011)
+```
+
+Repeat this for each season from 2011, or in short use `purrr`: 
+
+```
+purrr::walk(2011:2021, function(x) process_season_pbp(x))
+```
+
+In future sessions, the processed data will be loaded instead of downloaded and parsed (saving significant time). 
+
+## Preparing Model Features
+
+Much of the data used by the expected goals model is not present directly in the pbp file. Process each season's data using `load_prepped_data()` or, again with purrr:
+
+```
+purrr::walk(2011:2021, function(x) load_prepped_data(x))
+```
+
+In future sessions, the processed data will be loaded instead of reprocessed (saving significant time).  
+
+## Building a model
+
+Building the xG model itself can be performed by running `build_model()`. Note that a 2011 model would be built using the 2011 season data, which may not be useful. 
+
+```
+purrr::walk(2011:2021, function(x) build_model(x))
+```
+
+Note that this will take a very long time. If you plan to use the default model, please just load the model using `load_season_model()` function.
+
+# Model Performance Metrics
 
 The model provides the following performance by each year:
 
@@ -93,7 +133,7 @@ The model provides the following performance by each year:
 | 2020   |          |         |                   |
 | 2021   | --       | --      | --                |
 
-## Code of Conduct
+# Code of Conduct
 
 Please note that the BulsinkBxG project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/0/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms.
 

@@ -8,13 +8,19 @@
 \usage{
 tes(data, ...)
 
-\method{tes}{data.frame}(data, truth, ..., na_rm = TRUE, event_level = yardstick_event_level())
+\method{tes}{data.frame}(
+  data,
+  truth,
+  ...,
+  na_rm = TRUE,
+  event_level = yardstick:::yardstick_event_level()
+)
 
 tes_vec(
   truth,
   estimate,
   na_rm = TRUE,
-  event_level = yardstick_event_level(),
+  event_level = yardstick:::yardstick_event_level(),
   ...
 )
 }
@@ -26,6 +32,8 @@ tes_vec(
 \item{truth}{The column identifier for the true results (that is \code{numeric}). This should be an unquoted column name although this argument is passed by expression and supports quasiquotation (you can unquote column names).}
 
 \item{na_rm}{A \code{logical} value indicating whether NA values should be stripped before the computation proceeds.}
+
+\item{event_level}{A single string. Either "\code{first}" or "\code{second}" to specify which level of \code{truth} to consider as the "event". The default uses an internal helper that generally defaults to "\code{first}", however, if the deprecated global option \code{yardstick.event_first} is set, that will be used instead with a warning.}
 
 \item{estimate}{The column identifier for the predicted results (that is also \code{numeric}). As with \code{truth} this can be specified different ways but the primary method is to use an unquoted variable name.}
 }
