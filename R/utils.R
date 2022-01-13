@@ -46,9 +46,14 @@ get_game_ids<-function(season){
 }
 
 
-check_or_create_dir<-function(){
+check_or_create_dir<-function(season=NULL){
   if(!dir.exists(getOption("BulsinkBxG.data.path"))){
     dir.create(getOption("BulsinkBxG.data.path"))
+  }
+  if(!is.null(season)){
+    for(s in season){
+        dir.create(file.path(getOption("BulsinkBxG.data.path"), s))
+    }
   }
 }
 

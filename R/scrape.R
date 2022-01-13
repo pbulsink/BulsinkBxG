@@ -8,7 +8,7 @@
 #' @export
 scrape_and_save<-function(gameIds, overwrite_downloads = FALSE){
   #Ensure Data directory is available, if not, make it
-  check_or_create_dir()
+  check_or_create_dir(season=unique(substr(gameIds, 1,4)))
 
   #weird files - shifts2015020497
   gameIds<-gameIds[is_valid_gameId(gameIds)]
@@ -23,8 +23,9 @@ scrape_and_save<-function(gameIds, overwrite_downloads = FALSE){
       #pb$tick(tokens=list(gid = gameId))
       next
     }
+    season<-substr(gameId, 1,4)
     if(!overwrite_downloads){
-      if(file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_feed.RDS"))) & file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_shifts.RDS")))){
+      if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_feed.RDS"))) & file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_shifts.RDS")))){
         #pb$tick(tokens=list(gid = gameId))
         next
       }
@@ -51,11 +52,11 @@ scrape_and_save<-function(gameIds, overwrite_downloads = FALSE){
     )
 
     if(!is.null(feed)){
-      saveRDS(feed, file=file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_feed.RDS")))
+      saveRDS(feed, file=file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_feed.RDS")))
     }
 
     if(!is.null(shifts)){
-      saveRDS(shifts, file=file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_shifts.RDS")))
+      saveRDS(shifts, file=file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_shifts.RDS")))
     }
   }
 

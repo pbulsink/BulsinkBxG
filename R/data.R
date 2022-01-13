@@ -6,10 +6,10 @@
 #' @return pbp of whole season
 #' @export
 load_season_pbp<-function(season){
-  if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(season, ".rds")))){
+  if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_pbp.rds")))){
     return(compile_season(season = season))
   } else {
-    return(readRDS(file.path(getOption("BulsinkBxG.data.path"), paste0(season, ".rds"))))
+    return(readRDS(file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_pbp.rds"))))
   }
 }
 
@@ -36,8 +36,8 @@ compile_season<-function(season){
   for(i in seq_along(gameIds)){
     gameId<-gameIds[[i]]
     pb$tick(tokens=list(gid = gameId))
-    if(file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_pbp.RDS")))){
-      pbp_g<-readRDS(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_pbp.RDS")))
+    if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.RDS")))){
+      pbp_g<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.RDS")))
       pbplist[[i]]<-pbp_g  # subset(pbp_g, select = -players)
     } else {
       games_to_retry_scraping<-c(games_to_retry_scraping, gameId)
@@ -55,7 +55,7 @@ compile_season<-function(season){
              for(i in seq_along(gameIds)){
                gameId<-gameIds[[i]]
                pb$tick(tokens=list(gid = gameId))
-               if(file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_pbp.RDS")))){
+               if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.RDS")))){
                  pbp_g<-pbplist[[i]]
                  pbp<-dplyr::bind_rows(pbp, pbp_g)  # subset(pbp_g, select = -players)
                } else {
@@ -82,7 +82,7 @@ compile_season<-function(season){
     }
   }
 
-  saveRDS(pbp, file.path(getOption("BulsinkBxG.data.path"), paste0(season, ".rds")))
+  saveRDS(pbp, file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_pbp.rds")))
 
   invisible(pbp)
 }
@@ -157,14 +157,15 @@ process_season_pbp<-function(season){
 process_game_pbp<-function(gameId){
   stopifnot(is_valid_gameId(gameId))
 
+  season<-substr(gameId, 1,4)
   #Ensure file exists before we try load it. If not, try download. Else stop
-  if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_feed.RDS")))){
+  if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_feed.RDS")))){
     scrape_and_save(gameId, overwrite_downloads = TRUE)
   }
-  stopifnot(file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_feed.RDS"))))
+  stopifnot(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_feed.RDS"))))
 
-  feed<-readRDS(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_feed.RDS")))
-  tryCatch({shifts<-readRDS(file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_shifts.RDS")))},
+  feed<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_feed.RDS")))
+  tryCatch({shifts<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_shifts.RDS")))},
            error = function(e){message("Couldn't load shifts data for gameId ", gameId, "... Continuing"); shifts <- NA})
 
   shifts<-unique(shifts)  # fixes more problems
@@ -239,7 +240,7 @@ process_game_pbp<-function(gameId){
 
   feed$event_id <- as.numeric(paste0(feed$game_id, sprintf("%04d", feed$about_event_idx)))
 
-  saveRDS(feed, file=file.path(getOption("BulsinkBxG.data.path"), paste0(gameId, "_pbp.RDS")))
+  saveRDS(feed, file=file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.RDS")))
 
   invisible(feed)
 }
