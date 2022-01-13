@@ -118,20 +118,23 @@ Note that this will take a very long time. If you plan to use the default model,
 
 # Model Performance Metrics
 
+This model uses a custom metric to compare performance of the predicted xG to the actual goals. In addition to using accuracy, log loss and ROC AUC, a custom metric called Total Error Sum (TES) has been developed. The TES metric compares the total sum of goals in the predictor, and the total sum of the xG values. If the TES is positive, there are more goals than expected goals in the season. If negative, there are more xG than goals.
+
 The model provides the following performance by each year:
 
-| Season | Accuracy | ROC AUC | Sum (xG) - Sum(G) |
-|--------|----------|---------|-------------------|
-| 2012   |          |         |                   |
-| 2013   |          |         |                   |
-| 2014   |          |         |                   |
-| 2015   |          |         |                   |
-| 2016   |          |         |                   |
-| 2017   |          |         |                   |
-| 2018   |          |         |                   |
-| 2019   |          |         |                   |
-| 2020   |          |         |                   |
-| 2021   | --       | --      | --                |
+| Season | Accuracy | ROC AUC | Log Loss | Sum (G) - Sum(xG) |
+|--------|----------|---------|----------|-------------------|
+| 2011   |          |         |          |                   |
+| 2012   | 0.333036 | 0.89737 |          | 151.2             |
+| 2013   |          |         |          |                   |
+| 2014   |          |         |          |                   |
+| 2015   |          |         |          |                   |
+| 2016   |          |         |          |                   |
+| 2017   |          |         |          |                   |
+| 2018   |          |         |          |                   |
+| 2019   |          |         |          |                   |
+| 2020   |          |         |          |                   |
+| 2021   | --       | --      | --       | --                |
 
 # Code of Conduct
 

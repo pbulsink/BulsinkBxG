@@ -47,7 +47,7 @@ prep_xg_model_data<-function(pbp){
                    cross_ice = dplyr::if_else(.data$shot_side == dplyr::lag(.data$shot_side), 1, 0, missing = 0), # if shot comes from opposite side of previous event
                    delta_angle = dplyr::if_else(.data$time_diff < 5, abs(atan((.data$y_coord) / (89 - abs(.data$x_coord))) * (180 / pi)) - abs(atan(dplyr::lag(.data$y_coord) / (89 - abs(dplyr::lag(.data$x_coord)))) * (180 / pi)), 0), missing = 0) %>%
     #We've done our manipulations using the lagged data, go to fenwick only data now
-    #dplyr::filter(.data$event %in% fenwick_events & .data$about_period_type != "SHOOTOUT") %>%
+    dplyr::filter(.data$event %in% fenwick_events) %>% # & .data$about_period_type != "SHOOTOUT") %>%
     dplyr::mutate(shooter_id = .data$player_id_1,
                   goalie_id = dplyr::if_else(.data$is_home == 1, .data$away_goalie, .data$home_goalie)) %>%
     #dplyr::filter(!grepl("PS - ", .data$shot_type)) %>% # drop Penalty Shots from the main model
@@ -106,7 +106,7 @@ prep_xg_model_data<-function(pbp){
                   shot_side = forcats::fct_relevel(.data$shot_side, 'Mid'),
                   previous_event = forcats::fct_relevel(.data$previous_event, 'Unk')) %>%
     dplyr::mutate(shot_type = forcats::fct_drop(.data$shot_type)) %>%
-    dplyr::mutate(result = factor(as.character(.data$is_goal), levels = c('0', '1'), labels = c('no_goal','goal'), ordered = TRUE))
+    dplyr::mutate(result = factor(as.character(.data$is_goal), levels = c('1', '0'), labels = c('goal','no_goal'), ordered = TRUE))
 
     #dplyr::order_by(c("game_id", "time", "about_event_id"))
   #select(season, game_id, game_period, event_type, event_detail, team_tri_code, event_player_1, coords_x, coords_y, home_team, away_team, home_skaters, away_skaters, home_score, away_score, is_home, is_goal, x_coord, y_coord, time_diff, is_rebound, is_rush, speed, shot_side, cross_ice, is_cluster, pbp_distance, event_zone, shot_angle, shot_distance, attacker_benefit, shooter_net_empty, target_net_empty, shooter_goal_differential)
@@ -345,15 +345,18 @@ build_save_past_models <- function(){
 
 
 test_model <- function(model, test_data, metrics = NULL){
-  if (is.null(metrics)){
-    metrics <- yardstick::metric_set(yardstick::accuracy, yardstick::roc_auc, yardstick::mn_log_loss, tes)
+  test_data <- test_data %>%
+    dplyr::filter(.data$event %in% c('Shot', 'Missed Shot', 'Miss', 'Goal'))
+
+  if('.workflow' %in% names(model)){
+    model<-model$.workflow[[1]]
   }
+  test_data$.pred <- stats::predict(model, new_data = test_data, type = 'prob')$.pred_goal
 
-  test_data$.pred <- stats::predict(model, new_data = test_data)$.pred_goal
-
-  m <- yardstick::metrics(data = test_data, metrics = metrics)
-
-  return(m)
+  return(list('auc' = yardstick::roc_auc_vec(truth = test_data$result, estimate = test_data$.pred, event_level = 'second'),
+              'log_loss' = yardstick::mn_log_loss_vec(truth=test_data$result, estimate = test_data$.pred),
+              'tes' = (sum(test_data$is_goal)-sum(test_data$.pred))^2,
+              'accuracy' = sum(test_data$.pred > 0.5)/sum(test_data$is_goal == 1)))
 }
 
 
