@@ -41,6 +41,7 @@ prep_xg_model_data<-function(pbp){
            time_diff = dplyr::if_else(.data$time_diff < 0, 1000, .data$time_diff)) %>%  # <0 time diff makes no sense, bump it to the psudo na value of 1000 s
 
     dplyr::mutate(is_rebound = dplyr::if_else(.data$time_diff < 3 & .data$event %in% fenwick_events & dplyr::lag(.data$event) %in% corsi_events & .data$team_tri_code == dplyr::lag(.data$team_tri_code), 1, 0, missing = 0),  # is this a rebound shot?
+                  is_cluster = dplyr::if_else(.data$time_diff < 5 & .data$event %in% fenwick_events & dplyr::lag(.data$event) %in% corsi_events & .data$team_tri_code == dplyr::lag(.data$team_tri_code), 1, 0, missing = 0),
                    is_rush = dplyr::if_else(.data$time_diff < 5 & dplyr::lag(.data$x_coord) < 25, 1, 0, missing = 0),  # does this look like a shot on a rush?
                    speed = dplyr::if_else(!is.na(.data$time_diff), sqrt((.data$x_coord-dplyr::lag(.data$x_coord))^2 + (.data$y_coord - dplyr::lag(.data$y_coord))^2)/.data$time_diff, 0, missing = 0),  # speed from previous event to shot location in ft/s
                    shot_side = dplyr::if_else(.data$y_coord < 0, 'R', 'L', missing = "Unk"),  # from which side (goalie view) the fenwick comes from
@@ -323,16 +324,30 @@ build_model<-function(season, save_model=TRUE){
   #final_xgb
   message('testing model')
   final_res <- tune::last_fit(final_xgb,
-                                   train_test_split,
-                                   metrics = yardstick::metric_set(yardstick::accuracy, yardstick::roc_auc, yardstick::mn_log_loss, tes))
+                              train_test_split,
+                              metrics = yardstick::metric_set(yardstick::accuracy, yardstick::roc_auc, yardstick::mn_log_loss, tes))
 
   #xgb_wf_model <- final_xgb$.workflow[[1]]
 
   if(save_model){
+    #Current tests show:
+    # a) the object to save is the final_xgb$.workflow[[1]]
+    # b) further significant reductions in file size achieved by:
+    #    i. butcher::axe_data()
+    #   ii. butcher::axe_env()
+    #  iii. butcher::axe_call()
+    #
+    # Note: butcher::butcher removes too much, the model won't work after that.
+    # Note: butcher::axe_ctrl also fails
+
     if(!dir.exists(file.path(getOption("BulsinkBxG.data.path"), 'models'))){
       dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))
     }
-    saveRDS(final_xgb, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
+    savedmodel<-final_xgb$.workflow[[1]] %>%
+      butcher::axe_data() %>%
+      butcher::axe_env() %>%
+      butcher::axe_call()
+    saveRDS(savedmodel, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_model.RDS")))
   }
 
   return(list(model=final_xgb, metrics=tune::collect_metrics(final_res)))
@@ -344,7 +359,14 @@ build_save_past_models <- function(){
 }
 
 
-test_model <- function(model, test_data, metrics = NULL){
+#' Test a Model's performance
+#'
+#' @param model The model to test
+#' @param test_data The data to test agains
+#'
+#' @return a named list with four metrics
+#' @export
+test_model <- function(model, test_data){
   test_data <- test_data %>%
     dplyr::filter(.data$event %in% c('Shot', 'Missed Shot', 'Miss', 'Goal'))
 
@@ -353,7 +375,7 @@ test_model <- function(model, test_data, metrics = NULL){
   }
   test_data$.pred <- stats::predict(model, new_data = test_data, type = 'prob')$.pred_goal
 
-  return(list('auc' = yardstick::roc_auc_vec(truth = test_data$result, estimate = test_data$.pred, event_level = 'second'),
+  return(list('auc' = yardstick::roc_auc_vec(truth = test_data$result, estimate = test_data$.pred),
               'log_loss' = yardstick::mn_log_loss_vec(truth=test_data$result, estimate = test_data$.pred),
               'tes' = (sum(test_data$is_goal)-sum(test_data$.pred))^2,
               'accuracy' = sum(test_data$.pred > 0.5)/sum(test_data$is_goal == 1)))
