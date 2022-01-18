@@ -13,6 +13,16 @@
 get_game_xg<-function(gameId, model=NULL){
   stopifnot(is_valid_gameId(gameId))
 
+  if(file.exist(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))){
+    xg_files<-read.csv(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))
+    if(gameId %in% xg_files$GameId){
+      return(list("home_xg" = xg_files[xg_files$GameId == gameId,]$home_xg, "away_xg" = xg_files[xg_files$GameId == gameId,]$away_xg))
+    }
+  } else {
+    xg_files<-data.frame("GameId" = character(), "home_xg" = numeric(), "away_xg" = numeric())
+    write.csv(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE)
+  }
+
   season<-substr(gameId, 1, 4)
   if(is.null(model)){
     model<-load_season_model(season)
@@ -46,6 +56,8 @@ get_game_xg<-function(gameId, model=NULL){
     dplyr::mutate("xG" = dplyr::if_else(.data$is_cluster == 0, .data$xG, .data$xG * dplyr::lag(.data$xG))) %>%
     dplyr::select(-.data$xG_pred)
 
+  xg_files<-data.frame("GameId" = gameId, "home_xg" = um(game_pbp_home$xG), "away_xg" = sum(game_pbp_away$xG))
+  write.csv(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, col.names = FALSE)
   return(list("home_xg" = sum(game_pbp_home$xG), "away_xg" = sum(game_pbp_away$xG)))
 }
 
