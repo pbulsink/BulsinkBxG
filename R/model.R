@@ -175,7 +175,11 @@ calculate_all_rink_biases<-function(){
 }
 
 adjust_for_rink_bias <- function(data, season, backchecking = FALSE){
-  if(season %in% rink_biases$season & !backchecking){
+  if(season == 2011 && !backchecking){
+    message("Must use 2011 data to adjust 2011 shot distances - no previous seasons available")
+    backchecking <- FALSE
+  }
+  if(season %in% rink_biases$season && !backchecking){
     data <- data %>%
       dplyr::rowwise() %>%
       dplyr::mutate(adjusted_distance = dplyr::if_else(.data$is_home == 1,
@@ -338,7 +342,8 @@ build_model<-function(season, save_model=TRUE){
     #  iii. butcher::axe_call()
     #
     # Note: butcher::butcher removes too much, the model won't work after that.
-    # Note: butcher::axe_ctrl also fails
+    # Note: butcher::axe_ctrl also fails?
+    # See: https://github.com/tidymodels/butcher/issues/147 for updates on butcher performance
 
     if(!dir.exists(file.path(getOption("BulsinkBxG.data.path"), 'models'))){
       dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))

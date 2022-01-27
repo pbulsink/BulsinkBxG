@@ -13,6 +13,10 @@
 get_game_xg<-function(gameId, model=NULL){
   stopifnot(is_valid_gameId(gameId))
 
+  season<-substr(gameId, 1, 4)
+
+  stopifnot(as.numeric(season)>2011)
+
   if(file.exist(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))){
     xg_files<-read.csv(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))
     if(gameId %in% xg_files$GameId){
@@ -23,41 +27,87 @@ get_game_xg<-function(gameId, model=NULL){
     write.csv(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE)
   }
 
+  pbp<-model_game_xg(gameId = gameId, model = model)
+
+  xg_files<-data.frame("GameId" = gameId, "home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG))
+  write.csv(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, col.names = FALSE)
+  return(list("home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG)))
+}
+
+#' Game Report
+#'
+#' @description Get all xG for team and players for a gameId.
+#'
+#' @param gameId Game ID to build the report
+#' @param model optional model for that season's games
+#' @param backchecking Whether we're checking past games - default = true
+#'
+#' @return a list with home and away teams, their xg, and a data frame of all players and their xg for and against.
+#' @export
+build_game_report<-function(gameId, model = NULL, backchecking = TRUE){
+  stopifnot(is_valid_gameId(gameId))
+
   season<-substr(gameId, 1, 4)
-  if(is.null(model)){
-    model<-load_season_model(season)
+
+  stopifnot(as.numeric(season)>=2011)
+
+  pbp<-model_game_xg(gameId = gameId, model = model, backchecking = backchecking)
+
+  home_team<-head(pbp$home_team, 1)
+  away_team<-head(pbp$away_team, 1)
+
+  home_xg<-sum(pbp[pbp$is_home == 1, ]$xG)
+  away_xg<-sum(pbp[pbp$is_home == 0, ]$xG)
+
+  home_goals<-nrow(pbp[pbp$is_home == 1 & pbp$event == "Goal", ])
+  away_goals<-nrow(pbp[pbp$is_home == 0 & pbp$event == "Goal", ])
+
+  home_players<-unique(c(pbp$home_onice_1, pbp$home_onice_2, pbp$home_onice_3, pbp$home_onice_4, pbp$home_onice_5, pbp$home_onice_6, pbp$home_goalie))
+  away_players<-unique(c(pbp$away_onice_1, pbp$away_onice_2, pbp$away_onice_3, pbp$away_onice_4, pbp$away_onice_5, pbp$away_onice_6, pbp$away_goalie))
+
+  home_players<-home_players[!is.na(home_players)]
+  away_players<-away_players[!is.na(away_players)]
+
+  playerframe<-data.frame("PlayerId" = c(home_players, away_players),
+                          "Team" = c(rep(home_team, length(home_players)), rep(away_team, length(away_players))),
+                          "xG_for" = 0, "xG_against" = 0)
+
+  for(p in playerframe$PlayerId){
+    xgon<-pbp %>%
+      dplyr::filter(
+          .data$home_onice_1 == p | .data$home_onice_2 == p  | .data$home_onice_3 == p | .data$home_onice_4 == p | .data$home_onice_5 == p | .data$home_onice_6 == p | .data$home_goalie == p | .data$away_onice_1 == p | .data$away_onice_2 == p  | .data$away_onice_3 == p | .data$away_onice_4 == p | .data$away_onice_5 == p | .data$away_onice_6 == p | .data$away_goalie == p
+      )
+
+    playerframe[playerframe$PlayerId == p, ]$xG_for <- sum(xgon[playerframe[playerframe$PlayerId == p, ]$Team == xgon$team_tri_code, ]$xG)
+    playerframe[playerframe$PlayerId == p, ]$xG_against <- sum(xgon[playerframe[playerframe$PlayerId == p, ]$Team != xgon$team_tri_code, ]$xG)
   }
 
-  if(file.exist(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds")))){
-    game_pbp<-file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds"))
+  return(list("home_team" = home_team, "away_team", away_team, "home_xg" = home_xg, "away_xg" = away_xg, "home_goals" = home_goals, "away_goals" = away_goals, "player_xg" = playerframe))
+}
+
+model_game_xg<-function(gameId, model=NULL, backchecking = TRUE){
+  season<-substr(gameId, 1, 4)
+
+  stopifnot(as.numeric(season)>=2011)
+
+  if(is.null(model)){
+    model<-load_season_model(season = as.numeric(season))
+  }
+
+  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds")))){
+    game_pbp<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds")))
   } else {
     game_pbp<-process_game_pbp(gameId)
   }
 
-  game_pbp<-prep_xg_model_data(game_pbp)
+  game_pbp<-suppressWarnings(prep_xg_model_data(game_pbp))
+  game_pbp<-adjust_for_rink_bias(game_pbp, season=as.numeric(season), backchecking = backchecking)
 
   game_pbp<-game_pbp[game_pbp$event %in% c('Shot', 'Missed Shot', 'Miss', 'Goal'), ]
 
-  game_pbp_home<-game_pbp[game_pbp$is_home == 1, ]
-  game_pbp_away<-game_pbp[game_pbp$is_home == 0, ]
+  game_pbp$xG_pred<-workflows:::predict.workflow(model, new_data = game_pbp, type = 'prob')$.pred_goal
 
-  game_pbp_home$xG_pred<-predict(model, new_data = game_pbp_home)
-  game_pbp_away$xG_pred<-predict(model, new_data = game_pbp_away)
+  game_pbp$xG <- ifelse(game_pbp$is_cluster == 0, game_pbp$xG_pred, game_pbp$xG_pred * (1-dplyr::lag(game_pbp$xG_pred)))
 
-  game_pbp_home <- game_pbp_home %>%
-    dplyr::mutate("xG" = .data$xG_pred) %>%
-    dplyr::rowwise() %>%
-    dplyr::mutate("xG" = dplyr::if_else(.data$is_cluster == 0, .data$xG, .data$xG * dplyr::lag(.data$xG))) %>%
-    dplyr::select(-.data$xG_pred)
-
-  game_pbp_away <- game_pbp_away %>%
-    dplyr::mutate("xG" = .data$xG_pred) %>%
-    dplyr::rowwise() %>%
-    dplyr::mutate("xG" = dplyr::if_else(.data$is_cluster == 0, .data$xG, .data$xG * dplyr::lag(.data$xG))) %>%
-    dplyr::select(-.data$xG_pred)
-
-  xg_files<-data.frame("GameId" = gameId, "home_xg" = um(game_pbp_home$xG), "away_xg" = sum(game_pbp_away$xG))
-  write.csv(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, col.names = FALSE)
-  return(list("home_xg" = sum(game_pbp_home$xG), "away_xg" = sum(game_pbp_away$xG)))
+  return(game_pbp)
 }
-

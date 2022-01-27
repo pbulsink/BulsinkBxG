@@ -2,6 +2,7 @@
 
 S3method(tes,data.frame)
 export("%>%")
+export(build_game_report)
 export(build_model)
 export(build_player_db)
 export(compile_season)

@@ -165,10 +165,8 @@ process_game_pbp<-function(gameId){
   stopifnot(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_feed.RDS"))))
 
   feed<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_feed.RDS")))
-  tryCatch({shifts<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_shifts.RDS")))},
-           error = function(e){message("Couldn't load shifts data for gameId ", gameId, "... Continuing"); shifts <- NA})
-
-  shifts<-unique(shifts)  # fixes more problems
+  shifts<-tryCatch(unique(readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_shifts.RDS")))),
+                   error = function(e){message("Couldn't load shifts data for gameId ", gameId, "... Continuing"); return(data.frame())})
 
   homeTeam<-substr(feed$result_event_code[1], 1, 3)
   awayTeam<-unique(feed$team_tri_code)[which(unique(feed$team_tri_code) != homeTeam)]
