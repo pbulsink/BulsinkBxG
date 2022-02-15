@@ -4,7 +4,7 @@
 \alias{load_season_model}
 \title{Load Season Model}
 \usage{
-load_season_model(season)
+load_season_model(season, model = "logistic")
 }
 \arguments{
 \item{season}{The season's xG model to load}

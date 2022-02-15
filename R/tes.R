@@ -27,7 +27,7 @@ tes <- function(data, ...) {
 
 tes <- yardstick::new_prob_metric(
   tes,
-  direction = "zero"
+  direction = "minimize"
 )
 
 #' @export
@@ -89,16 +89,14 @@ tes_binary <- function(truth, estimate, event_level) {
     truth <- stats::relevel(truth, lvls[[2]])
   }
 
-  estimate <- matrix(c(estimate, 1 - estimate), ncol = 2)
-
   tes_multiclass(truth, estimate)
 }
 
 tes_multiclass <- function(truth, estimate) {
-  y <- sum((as.integer(truth) - 1))
+  y <- sum((as.integer(truth) == 1))
   x <- sum(estimate)
 
-  out <- y - x
+  out <- abs(y - x)
 
   out
 }

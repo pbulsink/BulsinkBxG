@@ -360,10 +360,11 @@ scrape_players<-function(playerId){
   unique_players<-unique(playerId)
   unique_players<-unique_players[!is.na(unique_players)]
   players<-nhlapi::nhl_players(playerIds = unique_players)
-  players<-players[,c("id", "fullName", "firstName", "lastName", "primaryNumber", "birthDate", "birthCity",
+  players<-players %>%
+    dplyr::select(dplyr::any_of(c("id", "fullName", "firstName", "lastName", "primaryNumber", "birthDate", "birthCity",
                       "birthStateProvince", "birthCountry", "nationality", "height", "weight", "alternateCaptain",
                       "captain", "rookie", "shootsCatches", "primaryPosition.code", "primaryPosition.name",
-                      "primaryPosition.type", "primaryPosition.abbreviation")]
+                      "primaryPosition.type", "primaryPosition.abbreviation")))
   players<-janitor::clean_names(players)
   if(nrow(players) == 0){
     return(NULL)

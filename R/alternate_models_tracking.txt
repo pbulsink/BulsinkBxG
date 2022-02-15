@@ -1,0 +1,37 @@
+#Alternate Models & performance
+#season =2014
+#each model was compared via tune::show_best()
+
+#xgboost
+#training results <- logloss = 0.221, roc_auc = 0.889, tes = 9.88, 136, 165
+
+#glmnet()
+tictoc::tic()
+lrmod<-parsnip::logistic_reg(penalty=tune::tune(), mixture = tune::tune()) %>% parsnip::set_engine('glmnet')
+lr_workflow <- workflows::workflow() %>% workflows::add_model(lrmod) %>% workflows::add_recipe(model_recipe)
+lr_res<-lr_workflow %>% tune::tune_bayes(resamples = v_folds, control = tune::, metrics = yardstick::metric_set(tes, yardstick::roc_auc, yardstick::mn_log_loss))
+tictoc::toc()
+tune::show_best(lr_res, 'tes')
+tune::show_best(lr_res, 'roc_auc')
+tune::show_best(lr_res, 'mn_log_loss')
+#training results 2014 <- logloss = 0.148, roc_auc = 0.910, tes = 25.8 - penalty = 6.17e-6, mixture = 0.743
+#training results 2015 <- logloss = 0.149, roc_auc = 0.909, tes = 44.8 - penalty = 4.12e-6, mixture = 0.613
+#with downsampling:
+#' 1 tes         binary     16174.    Preprocessor1_Model1
+#' 2 roc_auc     binary         0.906 Preprocessor1_Model1
+#' 3 mn_log_loss binary         0.401 Preprocessor1_Model1
+
+
+#random_forest() - couldn't finish overnight.
+rfmod<-rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>% set_engine('ranger', num.threads = parallel::detectCores()) %>% set_mode("classification")
+rfrec<-recipes::recipe(result ~ ., data = train_data) %>% recipes::update_role(.data$event_id, new_role = "ID") %>% recipes::step_novel(recipes::all_predictors(),-recipes::all_numeric()) %>% recipes::step_naomit(.data$adjusted_distance, .data$shot_angle, .data$x_coord, .data$y_coord, skip = TRUE)
+rf_workflow<-workflow() %>% add_model(rfmod) %>% add_recipe(rfrec)
+rf_res<-rf_workflow %>% tune_grid(resamples = v_folds, grid = 25, control = control_grid(save_pred = TRUE), metrics = metric_set(tes, roc_auc, mn_log_loss))
+#training results <- logloss = , roc_auc = , tes = XXXX
+
+
+#svm_poly() - very slow, couldn't generate vector of 428 GB haha
+svmmod<-svm_poly(cost = tune(), degree = tune(), scale_factor = tune()) %>% set_mode("classification") %>% set_engine("kernlab")
+svmgrid<-grid_latin_hypercube(dials::cost(), dials::degree(), dials::scale_factor(), size=30)
+svm_workflow <- workflow() %>% add_model(svmmod) %>% add_recipe(model_recipe)
+svm_res<-svm_workflow %>% tune_grid(resamples = v_folds, grid = svmgrid, control = control_grid(save_pred = TRUE), metrics =  metric_set(tes, roc_auc, mn_log_loss))

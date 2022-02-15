@@ -17,21 +17,21 @@ get_game_xg<-function(gameId, model=NULL){
 
   stopifnot(as.numeric(season)>2011)
 
-  if(file.exist(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))){
+  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))){
     xg_files<-read.csv(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))
     if(gameId %in% xg_files$GameId){
       return(list("home_xg" = xg_files[xg_files$GameId == gameId,]$home_xg, "away_xg" = xg_files[xg_files$GameId == gameId,]$away_xg))
     }
   } else {
     xg_files<-data.frame("GameId" = character(), "home_xg" = numeric(), "away_xg" = numeric())
-    write.csv(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE)
+    write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE)
   }
 
   pbp<-model_game_xg(gameId = gameId, model = model)
 
   xg_files<-data.frame("GameId" = gameId, "home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG))
-  write.csv(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, col.names = FALSE)
-  return(list("home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG)))
+  write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE)
+  invisible(list("home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG)))
 }
 
 #' Game Report
@@ -82,7 +82,7 @@ build_game_report<-function(gameId, model = NULL, backchecking = TRUE){
     playerframe[playerframe$PlayerId == p, ]$xG_against <- sum(xgon[playerframe[playerframe$PlayerId == p, ]$Team != xgon$team_tri_code, ]$xG)
   }
 
-  return(list("home_team" = home_team, "away_team", away_team, "home_xg" = home_xg, "away_xg" = away_xg, "home_goals" = home_goals, "away_goals" = away_goals, "player_xg" = playerframe))
+  return(list("home_team" = home_team, "away_team" = away_team, "home_xg" = home_xg, "away_xg" = away_xg, "home_goals" = home_goals, "away_goals" = away_goals, "player_xg" = playerframe))
 }
 
 model_game_xg<-function(gameId, model=NULL, backchecking = TRUE){
@@ -111,3 +111,9 @@ model_game_xg<-function(gameId, model=NULL, backchecking = TRUE){
 
   return(game_pbp)
 }
+
+get_season_xGs<-function(season){
+  gameIds<-get_game_ids(season=season)
+  purrr::walk(gameIds, get_game_xg)
+}
+

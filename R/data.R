@@ -174,12 +174,19 @@ process_game_pbp<-function(gameId){
   feed$home_team <- homeTeam
   feed$away_team <- awayTeam
 
+  if(!all(shifts$team_abbrev %in% c(homeTeam, awayTeam))){
+    #something is wrong with shifts data - NULL out to avoid issues.
+    shifts<-data.frame()
+  }
+
   feed$time<-((as.integer(substr(feed$about_period_time, 1,2))+(20*(feed$about_period-1)))*60) + as.integer(substr(feed$about_period_time, 4,5))
   homeGoalies<-get_goalies(feed, homeTeam)
   awayGoalies<-get_goalies(feed, awayTeam)
 
   feed<-feed[!is.na(feed$coordinates_x),]
   feed$game_id <- gameId
+
+  stopifnot(nrow(feed) > 0)
 
   if(nrow(shifts)>0){
     homePlayers<-get_feed_players(feed, shifts, homeTeam, homeGoalies)
@@ -223,7 +230,9 @@ process_game_pbp<-function(gameId){
     feed$home_strength<-as.character(5-feed$home_in_box)
     feed$away_strength<-as.character(5-feed$away_in_box)
     if(any(as.logical(feed$result_empty_net), na.rm = TRUE)){
-      for(f in feed[feed$result_empty_net, ]$about_event_idx){
+      feidx<-feed[feed$result_empty_net, ]$about_event_idx
+      feidx<-feidx[!is.na(feidx)]
+      for(f in feidx){
         if(feed[feed$about_event_idx == f, ]$team_tri_code == homeTeam){
           feed[feed$about_event_idx == f, ]$away_strength = "E"
         } else {
@@ -278,7 +287,7 @@ get_feed_players<-function(feed, shifts, team, goalies){
     goalie<-as.numeric(goalie)
 
     pl_df<-data.frame("p1"=players[1], "p2"=players[2], "p3"=players[3], "p4"=players[4], "p5"=players[5], "p6"=players[6], "g"=goalie)
-    return(pl_df)
+    return(pl_df[1,])
   }
 
   # g_p_v<-Vectorize(g_p, vectorize.args = c("time", "eventType"))
