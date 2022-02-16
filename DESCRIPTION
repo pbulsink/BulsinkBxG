@@ -34,7 +34,8 @@ Imports:
     forcats,
     hardhat,
     xgboost,
-    doParallel
+    doParallel,
+    glmnet
 Suggests: 
     lifecycle,
     testthat
