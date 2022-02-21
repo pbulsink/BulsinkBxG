@@ -42,6 +42,7 @@ get_game_ids<-function(season){
       }
     }
   }
+  gameIds<-gameIds[is_valid_gameId(gameIds)]
   return(gameIds)
 }
 

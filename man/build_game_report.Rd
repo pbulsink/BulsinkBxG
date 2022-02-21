@@ -4,14 +4,12 @@
 \alias{build_game_report}
 \title{Game Report}
 \usage{
-build_game_report(gameId, model = NULL, backchecking = TRUE)
+build_game_report(gameId, model = NULL)
 }
 \arguments{
 \item{gameId}{Game ID to build the report}
 
 \item{model}{optional model for that season's games}
-
-\item{backchecking}{Whether we're checking past games - default = true}
 }
 \value{
 a list with home and away teams, their xg, and a data frame of all players and their xg for and against.

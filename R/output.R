@@ -15,7 +15,7 @@ get_game_xg<-function(gameId, model=NULL){
 
   season<-substr(gameId, 1, 4)
 
-  stopifnot(as.numeric(season)>2011)
+  stopifnot(as.numeric(season)>=2011)
 
   if(file.exists(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))){
     xg_files<-read.csv(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))
@@ -24,13 +24,13 @@ get_game_xg<-function(gameId, model=NULL){
     }
   } else {
     xg_files<-data.frame("GameId" = character(), "home_xg" = numeric(), "away_xg" = numeric())
-    write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE)
+    write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE, sep = ",")
   }
 
   pbp<-model_game_xg(gameId = gameId, model = model)
 
-  xg_files<-data.frame("GameId" = gameId, "home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG))
-  write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE)
+  xg_files<-data.frame("GameId" = gameId, "home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG, na.rm = TRUE), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG, na.rm = TRUE))
+  write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
   invisible(list("home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG)))
 }
 
@@ -40,18 +40,17 @@ get_game_xg<-function(gameId, model=NULL){
 #'
 #' @param gameId Game ID to build the report
 #' @param model optional model for that season's games
-#' @param backchecking Whether we're checking past games - default = true
 #'
 #' @return a list with home and away teams, their xg, and a data frame of all players and their xg for and against.
 #' @export
-build_game_report<-function(gameId, model = NULL, backchecking = TRUE){
+build_game_report<-function(gameId, model = NULL){
   stopifnot(is_valid_gameId(gameId))
 
   season<-substr(gameId, 1, 4)
 
   stopifnot(as.numeric(season)>=2011)
 
-  pbp<-model_game_xg(gameId = gameId, model = model, backchecking = backchecking)
+  pbp<-model_game_xg(gameId = gameId, model = model)
 
   home_team<-head(pbp$home_team, 1)
   away_team<-head(pbp$away_team, 1)
@@ -82,10 +81,10 @@ build_game_report<-function(gameId, model = NULL, backchecking = TRUE){
     playerframe[playerframe$PlayerId == p, ]$xG_against <- sum(xgon[playerframe[playerframe$PlayerId == p, ]$Team != xgon$team_tri_code, ]$xG)
   }
 
-  return(list("home_team" = home_team, "away_team" = away_team, "home_xg" = home_xg, "away_xg" = away_xg, "home_goals" = home_goals, "away_goals" = away_goals, "player_xg" = playerframe))
+  return(list("game" = gameId, "home_team" = home_team, "away_team" = away_team, "home_xg" = home_xg, "away_xg" = away_xg, "home_goals" = home_goals, "away_goals" = away_goals, "player_xg" = playerframe))
 }
 
-model_game_xg<-function(gameId, model=NULL, backchecking = TRUE){
+model_game_xg<-function(gameId, model=NULL){
   season<-substr(gameId, 1, 4)
 
   stopifnot(as.numeric(season)>=2011)
@@ -101,11 +100,15 @@ model_game_xg<-function(gameId, model=NULL, backchecking = TRUE){
   }
 
   game_pbp<-suppressWarnings(prep_xg_model_data(game_pbp))
-  game_pbp<-adjust_for_rink_bias(game_pbp, season=as.numeric(season), backchecking = backchecking)
+  game_pbp<-adjust_for_rink_bias(game_pbp, season=as.numeric(season))
 
   game_pbp<-game_pbp[game_pbp$event %in% c('Shot', 'Missed Shot', 'Miss', 'Goal'), ]
 
-  game_pbp$xG_pred<-workflows:::predict.workflow(model, new_data = game_pbp, type = 'prob')$.pred_goal
+  xg_res<-get_xg(data = game_pbp, model_collection = model)$data
+
+  game_pbp<-dplyr::left_join(game_pbp, xg_res, by = 'event_id')
+
+  game_pbp$xG_pred <- game_pbp$xG
 
   game_pbp$xG <- ifelse(game_pbp$is_cluster == 0, game_pbp$xG_pred, game_pbp$xG_pred * (1-dplyr::lag(game_pbp$xG_pred)))
 
@@ -114,6 +117,7 @@ model_game_xg<-function(gameId, model=NULL, backchecking = TRUE){
 
 get_season_xGs<-function(season){
   gameIds<-get_game_ids(season=season)
+  gameIds<-gameIds[is_valid_gameId(gameIds)]
   purrr::walk(gameIds, get_game_xg)
 }
 

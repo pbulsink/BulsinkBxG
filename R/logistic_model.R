@@ -10,13 +10,13 @@
 #' @return invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with `predict()`
 #' @export
 build_logistic_model<-function(season, save_model=TRUE){
+  set.seed(123)
   stopifnot(is.numeric(season))
   stopifnot(season >= 2011)
   stopifnot(season <= as.numeric(strftime(Sys.Date(), '%Y')))
-  fenwick_events <- c('Shot', 'Missed Shot', 'Miss', 'Goal')
 
   if(season == 2011){
-    warning("Season 2011 will be built using 2011-2012 data (i.e. no out-of-season data.")
+    message("Season 2011 will be built using 2011-2012 data (i.e. no out-of-season data).")
   }
 
   if(season >= 2014){
@@ -25,271 +25,247 @@ build_logistic_model<-function(season, save_model=TRUE){
     pbp<-dplyr::bind_rows(load_prepped_data(2011), load_prepped_data(2012))
   } else if (season <= 2012) {
     pbp<-load_prepped_data(2011)
+    split11<-rsample::initial_split(data = pbp, strata='result', prop = .25)
+    pbp<-split11 %>% rsample::training()
+    test_data_split<-split11 %>% rsample::testing() %>% split_clean_data()
+    rm(split11)
   }
 
-  pbp<-pbp %>%
-    dplyr::filter(.data$event %in% fenwick_events) %>%
-    dplyr::select(c('result', 'adjusted_distance', 'shot_angle', 'shot_type', 'is_rebound', 'is_rush', 'speed', 'shooter_benefit', 'goalie_benefit',
-                    'goal_differential', 'shooter_position', 'is_shooter_strong_side', 'is_goalie_glove_side', 'cross_ice', 'shooter_net_empty',
-                    'shooter_pp_time', 'shooter_pp_time_remaining', 'goalie_pp_time', 'goalie_pp_time_remaining', 'is_even_strength',
-                    'ordinal_goal_differential', 'previous_event', 'shootout', 'penalty_shot', 'target_net_empty', 'event'))
-  pbp_ev<-pbp %>%
-    dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$shooter_benefit == 0, .data$goalie_benefit == 0) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'shooter_pp_time', 'shooter_pp_time_remaining', 'goalie_pp_time',
-                     'goalie_pp_time_remaining', 'shooter_benefit', 'goalie_benefit', 'event'))
-
-  pbp_pp<-pbp %>%
-    dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$shooter_benefit > 0) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
-
-  pbp_pk<-pbp %>%
-    dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$goalie_benefit > 0) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
-
-  pbp_en<-pbp %>%
-    dplyr::filter(.data$target_net_empty == 1) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
-
-  pbp_sh<-pbp %>%
-    dplyr::filter(.data$shootout == 1 | .data$penalty_shot == 1) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'event'))
+  pbp_split<-pbp %>%
+    split_clean_data()
 
   if(file.exists(file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_data.rds"))) & season > 2011){
     test_data<-readRDS(file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_data.rds")))
-    test_data<-test_data %>%
-      dplyr::filter(.data$event %in% fenwick_events) %>%
-      dplyr::select(c('result', 'adjusted_distance', 'shot_angle', 'shot_type', 'is_rebound', 'is_rush', 'speed', 'shooter_benefit', 'goalie_benefit',
-                      'goal_differential', 'shooter_position', 'is_shooter_strong_side', 'is_goalie_glove_side', 'cross_ice', 'shooter_net_empty',
-                      'shooter_pp_time', 'shooter_pp_time_remaining', 'goalie_pp_time', 'goalie_pp_time_remaining', 'is_even_strength',
-                      'ordinal_goal_differential', 'previous_event', 'shootout', 'penalty_shot', 'target_net_empty', 'event'))
-
-    test_ev<-test_data %>%
-      dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$shooter_benefit == 0, .data$goalie_benefit == 0) %>%
-      dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'shooter_pp_time', 'shooter_pp_time_remaining', 'goalie_pp_time',
-                       'goalie_pp_time_remaining', 'shooter_benefit', 'goalie_benefit', 'event'))
-
-    test_pp<-test_data %>%
-      dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$shooter_benefit > 0) %>%
-      dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
-
-    test_pk<-test_data %>%
-      dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$goalie_benefit > 0) %>%
-      dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
-
-    test_en<-test_data %>%
-      dplyr::filter(.data$target_net_empty == 1) %>%
-      dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
-
-    test_sh<-test_data %>%
-      dplyr::filter(.data$shootout == 1 | .data$penalty_shot == 1) %>%
-      dplyr::select(-c('shootout', 'penalty_shot', 'event'))
-
-    train_ev<-pbp_ev
-    train_pp<-pbp_pp
-    train_pk<-pbp_pk
-    train_en<-pbp_en
-    train_sh<-pbp_sh
-
+    test_data_split<-test_data %>%
+      split_clean_data()
+    train_data_split<-pbp_split
   } else {
-    split_ev <- rsample::initial_split(data = pbp_ev, strata='result', prop = .25)
-    split_pp <- rsample::initial_split(data = pbp_pp, strata='result', prop = .25)
-    split_pk <- rsample::initial_split(data = pbp_pk, strata='result', prop = .25)
-    split_en <- rsample::initial_split(data = pbp_en, strata='result', prop = .25)
-    split_sh <- rsample::initial_split(data = pbp_sh, strata='result', prop = .25)
+    split_ev <- rsample::initial_split(data = pbp_split$ev, strata='result', prop = .25)
+    split_pp <- rsample::initial_split(data = pbp_split$pp, strata='result', prop = .25)
+    split_pk <- rsample::initial_split(data = pbp_split$pk, strata='result', prop = .25)
+    split_en <- rsample::initial_split(data = pbp_split$en, strata='result', prop = .25)
+    split_sh <- rsample::initial_split(data = pbp_split$sh, strata='result', prop = .25)
 
-    test_ev<-split_ev %>% rsample::testing()
-    test_pp<-split_pp %>% rsample::testing()
-    test_pk<-split_pk %>% rsample::testing()
-    test_en<-split_en %>% rsample::testing()
-    test_sh<-split_sh %>% rsample::testing()
+    test_data_split<-list()
+    test_data_split$ev<-split_ev %>% rsample::testing()
+    test_data_split$pp<-split_pp %>% rsample::testing()
+    test_data_split$pk<-split_pk %>% rsample::testing()
+    test_data_split$en<-split_en %>% rsample::testing()
+    test_data_split$sh<-split_sh %>% rsample::testing()
+    #test_data<-dplyr::bind_rows(test_data_split)
 
-    train_ev<-split_ev %>% rsample::training()
-    train_pp<-split_pp %>% rsample::training()
-    train_pk<-split_pk %>% rsample::training()
-    train_en<-split_en %>% rsample::training()
-    train_sh<-split_sh %>% rsample::training()
+    train_data_split<-list()
+    train_data_split$ev<-split_ev %>% rsample::training()
+    train_data_split$pp<-split_pp %>% rsample::training()
+    train_data_split$pk<-split_pk %>% rsample::training()
+    train_data_split$en<-split_en %>% rsample::training()
+    train_data_split$sh<-split_sh %>% rsample::training()
 
     rm(split_ev, split_pp, split_pk, split_en, split_sh)
   }
 
-  rm(pbp_ev, pbp_pp, pbp_pk, pbp_en, pbp_sh)
+  rm(pbp_split)
 
   message('Training Even Strength Model')
-  ev_submodel<-build_logistic_submodel(train_data = train_ev, test_data = test_ev)
+  ev_submodel<-build_logistic_submodel(train_data = train_data_split$ev, test_data = test_data_split$ev)
   ev_model<-ev_submodel$model
   ev_metrics<-ev_submodel$metrics
-  rm(train_ev, test_ev)
-  message('Training Result: AUC: ', ev_metrics$roc_auc, ", TES: ", ev_metrics$tes, ", LogLoss: ", ev_metrics$log_loss)
+  message('Training Result: AUC: ', round(ev_metrics$roc_auc, 3), ", TES: ", round(ev_metrics$tes, 2), ", LogLoss: ", round(ev_metrics$log_loss, 3))
 
   message('Training Power Play Model')
-  pp_submodel<-build_logistic_submodel(train_data = train_pp, test_data = test_pp)
+  pp_submodel<-build_logistic_submodel(train_data = train_data_split$pp, test_data = test_data_split$pp)
   pp_model<-pp_submodel$model
   pp_metrics<-pp_submodel$metrics
-  rm(train_pp, test_pp)
-  message('Training Result: AUC: ', pp_metrics$roc_auc, ", TES: ", pp_metrics$tes, ", LogLoss: ", pp_metrics$log_loss)
+  message('Training Result: AUC: ', round(pp_metrics$roc_auc, 3), ", TES: ", round(pp_metrics$tes, 2), ", LogLoss: ", round(pp_metrics$log_loss, 3))
 
   message('Training Penalty Kill Model')
-  pk_submodel<-build_logistic_submodel(train_data = train_pk, test_data = test_pk)
+  pk_submodel<-build_logistic_submodel(train_data = train_data_split$pk, test_data = test_data_split$pk)
   pk_model<-pk_submodel$model
   pk_metrics<- pk_submodel$metrics
-  rm(train_pk, test_pk)
-  message('Training Result: AUC: ', pk_metrics$roc_auc, ", TES: ", pk_metrics$tes, ", LogLoss: ", pk_metrics$log_loss)
+  message('Training Result: AUC: ', round(pk_metrics$roc_auc, 3), ", TES: ", round(pk_metrics$tes, 2), ", LogLoss: ", round(pk_metrics$log_loss, 3))
 
   message('Training Empty Net Model')
-  en_submodel<-build_logistic_submodel(train_data = train_en, test_data = test_en)
+  en_submodel<-build_logistic_submodel(train_data = train_data_split$en, test_data = test_data_split$en)
   en_model<-en_submodel$model
   en_metrics<-en_submodel$metrics
-  rm(train_en, test_en)
-  message('Training Result: AUC: ', en_metrics$roc_auc, ", TES: ", en_metrics$tes, ", LogLoss: ", en_metrics$log_loss)
+  message('Training Result: AUC: ', round(en_metrics$roc_auc, 3), ", TES: ", round(en_metrics$tes, 2), ", LogLoss: ", round(en_metrics$log_loss, 3))
 
   message('Training Shootout and Penalty Shot Model')
-  sh_submodel<-build_logistic_submodel(train_data = train_sh, test_data = test_sh)
+  sh_submodel<-build_logistic_submodel(train_data = train_data_split$sh, test_data = test_data_split$sh)
   sh_model<-sh_submodel$model
   sh_metrics<-sh_submodel$metrics
-  rm(train_sh, test_sh)
-  message('Training Result: AUC: ', sh_metrics$roc_auc, ", TES: ", sh_metrics$tes, ", LogLoss: ", sh_metrics$log_loss)
+  message('Training Result: AUC: ', round(sh_metrics$roc_auc, 3), ", TES: ", round(sh_metrics$tes, 2), ", LogLoss: ", round(sh_metrics$log_loss, 3))
 
   model_collection<-list(
-    "EV" = ev_model, #butcher::butcher(ev_model)...,
-    "PP" = pp_model,
-    "PK" = pk_model,
-    "EN" = en_model,
-    "SH" = sh_model
+    "ev" = butcher::butcher(ev_model), #TODO validate butchering...,
+    "pp" = butcher::butcher(pp_model),
+    "pk" = butcher::butcher(pk_model),
+    "en" = butcher::butcher(en_model),
+    "sh" = butcher::butcher(sh_model)
   )
   message('Testing Model Collection')
 
-  test_results<-get_xg(model_collection = model_collection, data = test_data, metrics = TRUE)
+  test_results<-get_xg(model_collection = model_collection, data = test_data_split, metrics = TRUE)
 
-  preds<- predict(cv.lasso, newx = x.test, s = "lambda.1se", type = 'response')
-
-  test_tes<-tes_vec(truth = factor(y.test), estimate = preds, event_level = 'second')
-  test_roc<-yardstick::roc_auc_vec(truth = factor(y.test), estimate = preds, event_level = 'second')
-  test_ll<-yardstick::mn_log_loss_vec(truth = factor(y.test), estimate = preds, event_level = 'second')
-
-  gc(verbose = FALSE)
+  message('Test Result: AUC: ', round(test_results$auc, 3), ", TES: ", round(test_results$tes, 2), ", LogLoss: ", round(test_results$log_loss, 3))
 
   if(save_model){
     message("saving model")
     if(!dir.exists(file.path(getOption("BulsinkBxG.data.path"), 'models'))){
       dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))
     }
-    savedmodel<-butcher::butcher(cv.lasso)
 
-    saveRDS(savedmodel, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_logistic_model.RDS")))
+    saveRDS(model_collection, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_logistic_model.RDS")))
   }
 
-  doParallel::stopImplicitCluster()
-
-  suppressMessages(gc())
-
-  return(list(model=final_lr, metrics=list(tes = test_tes, roc_auc=test_roc, log_loss = test_ll)))
+  invisible(list(model=model_collection, metrics=test_results))
 }
 
 build_logistic_submodel<-function(train_data, test_data){
 
-  #message('massaging data')
-  x<-stats::model.matrix(result ~ ., train_data)
-  x_test<-stats::model.matrix(result ~., test_data)
-  y<-ifelse(train_data[complete.cases(train_data),]$result == 'goal', 1, 0)
-  y_test<-ifelse(test_data[complete.cases(test_data),]$result == 'goal', 1, 0)
-  y_test<-factor(y_test, levels = c(1,0))
+  v_folds <- rsample::vfold_cv(train_data, strata = 'result')
 
-  doParallel::registerDoParallel(cores = parallel::detectCores(logical = FALSE)) # approximately halves the number of cores used, to help with ram management.
+  model_recipe <-
+    recipes::recipe(result ~ ., data = train_data) %>%
+    recipes::update_role(.data$event_id, new_role = "ID") %>%
+    recipes::step_novel(recipes::all_predictors(),-recipes::all_numeric()) %>%
+    recipes::step_naomit(.data$adjusted_distance, .data$shot_angle, skip = TRUE) %>%
+    recipes::step_dummy(recipes::all_predictors(),-recipes::all_numeric()) #%>%
 
-  #message('tuning model')
-  set.seed(1234)
+  model_spec <- parsnip::logistic_reg(
+    mode = "classification",
+    engine = "glmnet",
+    penalty = tune::tune(),
+    mixture = 0.5
+  )
 
-  mod<-glmnet::cv.glmnet(x, y, alpha = 1, family = "binomial", parallel = TRUE)
+  model_workflow <- workflows::workflow() %>%
+    workflows::add_recipe(model_recipe) %>%
+    workflows::add_model(model_spec)
 
-  #message('testing model')
-  # final_res <- tune::last_fit(final_lr,
-  #                             train_test_split,
-  #                             metrics = yardstick::metric_set(tes, yardstick::roc_auc, yardstick::mn_log_loss))
+  doParallel::registerDoParallel(cores = parallel::detectCores(logical = FALSE))
 
-  preds<-as.vector(predict(mod, newx = x_test, s = "lambda.1se", type = 'response'))
+  pen_vals <- 10^seq(-6, 0, length.out = 19)
+  grid <- dials::grid_latin_hypercube(
+    dials::penalty(),
+    dials::mixture(),
+    size = 30
+  )
+
+  model_res<-tune::tune_grid(model_workflow,
+                             resamples = v_folds,
+                             grid = 25,
+                             control = tune::control_grid(save_pred = T),
+                             metrics = yardstick::metric_set(yardstick::roc_auc, yardstick::mn_log_loss, tes))
+
+  best_model<-tune::select_best(model_res, 'roc_auc')
+
+  final_model<-model_workflow %>%
+    tune::finalize_workflow(best_model) %>%
+    parsnip::fit(data = train_data)
+
+  test_fit <- predict(final_model, test_data, type = 'prob')
+
+  metrics<-list(
+    'roc_auc' = yardstick::roc_auc_vec(truth = test_data$result, estimate = test_fit$.pred_goal),
+    'log_loss'= yardstick::mn_log_loss_vec(truth = test_data$result, estimate = test_fit$.pred_goal),
+    'tes' = tes_vec(truth = test_data$result, estimate = test_fit$.pred_goal)
+    )
 
   doParallel::stopImplicitCluster()
 
-  test_tes<-tes_vec(truth = y_test, estimate = preds)
-  test_roc<-yardstick::roc_auc_vec(truth = y_test, estimate = preds)
-  test_ll<-yardstick::mn_log_loss_vec(truth = y_test, estimate = preds)
+  return(list(model=final_model, metrics = list(tes=metrics$tes, roc_auc = metrics$roc_auc, log_loss = metrics$log_loss)))
 
-  return(list(model=mod, metrics = list(tes=test_tes, roc_auc = test_roc, log_loss = test_ll)))
 }
 
-get_xg<-function(data, model_collection, metrics = FALSE){
-  fenwick_events <- c("Shot", "Missed Shot", "Miss", "Goal")
-
+split_clean_data<-function(data){
+  if('event' %in% colnames(data)){
+    fenwick_events <- c("Shot", "Missed Shot", "Miss", "Goal")
+    data<-data %>%
+      dplyr::filter(.data$event %in% fenwick_events)
+  }
   data<-data %>%
-    dplyr::filter(.data$event %in% fenwick_events) %>%
     dplyr::select(c('result', 'adjusted_distance', 'shot_angle', 'shot_type', 'is_rebound', 'is_rush', 'speed', 'shooter_benefit', 'goalie_benefit',
                     'goal_differential', 'shooter_position', 'is_shooter_strong_side', 'is_goalie_glove_side', 'cross_ice', 'shooter_net_empty',
                     'shooter_pp_time', 'shooter_pp_time_remaining', 'goalie_pp_time', 'goalie_pp_time_remaining', 'is_even_strength',
-                    'ordinal_goal_differential', 'previous_event', 'shootout', 'penalty_shot', 'target_net_empty'))
+                    'ordinal_goal_differential', 'previous_event', 'shootout', 'penalty_shot', 'target_net_empty', 'event', 'event_id'))
 
-  stopifnot(nrow(data) > 0)
-
-  data_ev<-data %>%
+  ev<-data %>%
     dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$shooter_benefit == 0, .data$goalie_benefit == 0) %>%
     dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'shooter_pp_time', 'shooter_pp_time_remaining', 'goalie_pp_time',
-                     'goalie_pp_time_remaining', 'shooter_benefit', 'goalie_benefit'))
+                     'goalie_pp_time_remaining', 'shooter_benefit', 'goalie_benefit', 'event'))
 
-  data_pp<-data %>%
+  pp<-data %>%
     dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$shooter_benefit > 0) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty'))
+    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
 
-  data_pk<-data %>%
+  pk<-data %>%
     dplyr::filter(.data$shootout != 1, .data$penalty_shot != 1, .data$target_net_empty != 1, .data$goalie_benefit > 0) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty'))
+    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
 
-  data_en<-data %>%
+  en<-data %>%
     dplyr::filter(.data$target_net_empty == 1) %>%
-    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty'))
+    dplyr::select(-c('shootout', 'penalty_shot', 'target_net_empty', 'event'))
 
-  data_sh<-data %>%
+  sh<-data %>%
     dplyr::filter(.data$shootout == 1 | .data$penalty_shot == 1) %>%
-    dplyr::select(-c('shootout', 'penalty_shot'))
+    dplyr::select(-c('shootout', 'penalty_shot', 'event'))
 
-  truth_ev <- truth_pp <- truth_pk <- truth_en <- truth_sh <- NULL
+  return(list("ev" = ev, "pp" = pp, "pk" = pk, "en" = en, "sh" = sh))
+}
+
+
+#' Get xG
+#'
+#' @param data The data to get an xG value rom
+#' @param model_collection a model collection
+#' @param metrics T/F on if you want metrics returned instead of xG values
+#'
+#' @return
+#' @export
+get_xg<-function(data, model_collection, metrics = FALSE){
+  if(!all(c('ev', 'pp', 'pk', 'en', 'sh') %in% names(data))){
+    data<-data %>% split_clean_data()
+  }
   xg_ev <- xg_pp <- xg_pk <- xg_en <- xg_sh <- NULL
 
-  if(sum(complete.cases(data_ev)) > 0){
-    truth_ev<-factor(ifelse(data_ev[complete.cases(data_ev),]$result == 'goal', 1, 0), levels = c(1,0))
-    data_ev<-stats::model.matrix(result ~ ., data_ev)
-    xg_ev<-as.vector(predict(model_collection$EV, newx = data_ev, s = "lambda.1se", type = 'response'))
+  if(sum(complete.cases(data$ev)) > 0){
+    data$ev$xG<-workflows:::predict.workflow(model_collection$ev, data$ev, type = 'prob')$.pred_goal
+    xg_ev<-sum(data$ev$xG, na.rm=TRUE)
   }
-  if(sum(complete.cases(data_pp)) > 0){
-    truth_pp<-factor(ifelse(data_pp[complete.cases(data_pp),]$result == 'goal', 1, 0), levels = c(1,0))
-    data_pp<-stats::model.matrix(result ~ ., data_pp)
-    xg_pp<-as.vector(predict(model_collection$PP, newx = data_pp, s = "lambda.1se", type = 'response'))
+  if(sum(complete.cases(data$pp)) > 0){
+    data$pp$xG<-workflows:::predict.workflow(model_collection$pp, data$pp, type = 'prob')$.pred_goal
+    xg_pp<-sum(data$pp$xG, na.rm=TRUE)
   }
-  if(sum(complete.cases(data_pk)) > 0){
-    truth_pk<-factor(ifelse(data_pk[complete.cases(data_pk),]$result == 'goal', 1, 0), levels = c(1,0))
-    data_pk<-stats::model.matrix(result ~ ., data_pk)
-    xg_pk<-as.vector(predict(model_collection$PK, newx = data_pk, s = "lambda.1se", type = 'response'))
+  if(sum(complete.cases(data$pk)) > 0){
+    data$pk$xG<-workflows:::predict.workflow(model_collection$pk, data$pk, type = 'prob')$.pred_goal
+    xg_pk<-sum(data$pk$xG, na.rm=TRUE)
   }
-  if(sum(complete.cases(data_en)) > 0){
-    truth_en<-factor(ifelse(data_en[complete.cases(data_en),]$result == 'goal', 1, 0), levels = c(1,0))
-    data_en<-stats::model.matrix(result ~ ., data_en)
-    xg_en<-as.vector(predict(model_collection$EN, newx = data_en, s = "lambda.1se", type = 'response'))
+  if(sum(complete.cases(data$en)) > 0){
+    data$en$xG<-workflows:::predict.workflow(model_collection$en, data$en, type = 'prob')$.pred_goal
+    xg_en<-sum(data$en$xG, na.rm=TRUE)
   }
-  if(sum(complete.cases(data_sh)) > 0){
-    truth_sh<-factor(ifelse(data_sh[complete.cases(data_sh),]$result == 'goal', 1, 0), levels = c(1,0))
-    data_sh<-stats::model.matrix(result ~ ., data_sh)
-    xg_sh<-as.vector(predict(model_collection$SH, newx = data_sh, s = "lambda.1se", type = 'response'))
+  if(sum(complete.cases(data$sh)) > 0){
+    data$sh$xG<-workflows:::predict.workflow(model_collection$sh, data$sh, type = 'prob')$.pred_goal
+    xg_sh<-sum(data$sh$xG, na.rm=TRUE)
   }
 
-  if(all(is.null(truth_ev), is.null(truth_pp), is.null(truth_pk), is.null(truth_en), is.null(truth_sh))){
+  xg <- sum(xg_ev,xg_pp,xg_pk,xg_en,xg_sh, na.rm = TRUE)
+  if(xg == 0){
     return(NULL)
   }
 
+
   if(metrics){
-    truth<-c(truth_ev, truth_pp, truth_pk, truth_en, truth_sh)
-    estimate<-c(xg_ev,xg_pp,xg_pk,xg_en,xg_sh)
+    truth<-c(data$ev$result, data$pp$result, data$pk$result, data$en$result, data$sh$result)
+    estimate<-c(data$ev$xg, data$pp$xg, data$pk$xg, data$en$xg, data$sh$xg)
     return(list(tes = tes_vec(truth=truth, estimate = estimate),
                 log_loss = yardstick::mn_log_loss_vec(truth = truth, estimate = estimate),
                 auc = yardstick::roc_auc_vec(truth = truth, estimate = estimate)))
   } else {
-    return(sum(xg_ev,xg_pp,xg_pk,xg_en,xg_sh))
+    data<-dplyr::bind_rows(data) %>%
+      dplyr::select('event_id', 'xG') %>%
+      dplyr::arrange('event_id')
+    return(list('data' = data, 'xg' = sum(xg_ev,xg_pp,xg_pk,xg_en,xg_sh)))
   }
 }

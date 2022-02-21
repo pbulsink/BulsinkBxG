@@ -190,7 +190,7 @@ adjust_for_rink_bias <- function(data, season, backchecking = FALSE){
       dplyr::mutate(adjusted_distance = dplyr::if_else(is.na(.data$adjusted_distance) | is.nan(.data$adjusted_distance), .data$shot_distance, .data$adjusted_distance))
   } else {
     #assume that season is current or backchecking
-    if(!any(rink_biases$season) %in% c((season-3):(season-1))) {
+    if(!any(rink_biases$season %in% c((season-3):(season-1)))) {
       message("No historical data to do adjustment, adjusted_distance = shot_distance")
       data$adjusted_distance = data$shot_distance
     }
