@@ -33,7 +33,6 @@ Imports:
     workflows,
     forcats,
     hardhat,
-    xgboost,
     doParallel,
     glmnet
 Suggests: 
