@@ -6,12 +6,8 @@ prep_xg_model_data<-function(pbp){
     dplyr::filter(.data$event %in% corsi_events | dplyr::lag(.data$event %in% corsi_events)) %>%  # Use Fenwicks because blocks are incorrectly located
     dplyr::mutate(is_home = dplyr::if_else(.data$team_tri_code == .data$home_team, 1, 0),  # binary home team event factor
            is_goal = dplyr::if_else(.data$event == "Goal", 1, 0))%>%  # binary is goal factor
-    dplyr::mutate(shot_type = dplyr::case_when(
-      shot_type == "Bat" ~ "Deflected",
-      shot_type == "Poke" ~ "Wrist",
-      shot_type == "Between Legs" ~ "Wrist",
-      TRUE ~ shot_type
-    )) %>%
+    dplyr::mutate(shot_type = dplyr::if_else(.data$shot_type %in% c('Unk', 'Tip-In', 'Snap Shot', 'Wrist Shot', 'Slap Shot', 'Backhand', 'Deflected', 'Wrap-around'),
+                                          .data$shot_type, 'Unk', 'Unk')) %>%
     dplyr::group_by(.data$game_id, .data$about_period, .data$team_tri_code) %>%
     dplyr::mutate(
       x_correct = dplyr::if_else(stats::median(.data$x_coord[.data$event %in% c('shot', 'Goal') & abs(.data$x_coord) > 25]) < 0, -1L, 1L, 1L),  # have to put all the shots on the right side of the rink.

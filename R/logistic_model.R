@@ -171,7 +171,10 @@ build_logistic_submodel<-function(train_data, test_data){
     workflows::add_recipe(model_recipe) %>%
     workflows::add_model(model_spec)
 
-  doParallel::registerDoParallel(cores = parallel::detectCores(logical = FALSE))
+  if(requireNamespace("doParallel")){
+    doParallel::registerDoParallel(cores = parallel::detectCores(logical = FALSE))
+  }
+
 
   pen_vals <- 10^seq(-6, 0, length.out = 19)
   grid <- dials::grid_latin_hypercube(
@@ -200,7 +203,9 @@ build_logistic_submodel<-function(train_data, test_data){
     'tes' = tes_vec(truth = test_data$result, estimate = test_fit$.pred_goal)
     )
 
-  doParallel::stopImplicitCluster()
+  if(requireNamespace("doParallel")){
+    doParallel::stopImplicitCluster()
+  }
 
   return(list(model=final_model, metrics = list(tes=metrics$tes, roc_auc = metrics$roc_auc, log_loss = metrics$log_loss)))
 

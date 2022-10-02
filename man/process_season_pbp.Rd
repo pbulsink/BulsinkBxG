@@ -4,10 +4,12 @@
 \alias{process_season_pbp}
 \title{Process a Season's PBPs}
 \usage{
-process_season_pbp(season)
+process_season_pbp(season, progress = TRUE)
 }
 \arguments{
 \item{season}{the season's pbp files to process}
+
+\item{progress}{Whether to show a progress bar. Default true, but requires the \code{progress} package}
 }
 \description{
 Process a Season's PBPs

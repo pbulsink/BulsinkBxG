@@ -4,12 +4,14 @@
 \alias{scrape_and_save}
 \title{Scrape and Save}
 \usage{
-scrape_and_save(gameIds, overwrite_downloads = FALSE)
+scrape_and_save(gameIds, overwrite_downloads = FALSE, progress = TRUE)
 }
 \arguments{
 \item{gameIds}{game ids to scrape}
 
 \item{overwrite_downloads}{If true, will re-download games. Else only try for missing games}
+
+\item{progress}{Whether to show a progress bar. Default true, but requires the \code{progress} package}
 }
 \description{
 Scrape games and save the raw files in a directory

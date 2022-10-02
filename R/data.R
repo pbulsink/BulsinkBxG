@@ -16,10 +16,11 @@ load_season_pbp<-function(season){
 #' Compile PBP to single season file
 #'
 #' @param season Season to compile to file
+#' @param progress Whether to show a progress bar. Default true, but requires the `progress` package
 #'
 #' @return pbp of whole season
 #' @export
-compile_season<-function(season){
+compile_season<-function(season, progress = TRUE){
   #get gameIDs to load
   gameIds<-get_game_ids(season=season)
   gameIds<-gameIds[is_valid_gameId(gameIds)]
@@ -27,15 +28,23 @@ compile_season<-function(season){
   pbp<-data.frame()
   games_to_retry_scraping<-c()
 
-  pb <- progress::progress_bar$new(
-    format = "Compiling game :gid [:bar] :percent eta: :eta",
-    total = length(gameIds)
-  )
+  if(!requireNamespace("progress")){
+    progress <- FALSE
+  }
+
+  if(progress){
+    pb <- progress::progress_bar$new(
+      format = "Compiling game :gid [:bar] :percent eta: :eta",
+      total = length(gameIds)
+    )
+  }
   pbplist<-list()
 
   for(i in seq_along(gameIds)){
     gameId<-gameIds[[i]]
-    pb$tick(tokens=list(gid = gameId))
+    if(progress){
+      pb$tick(tokens=list(gid = gameId))
+    }
     if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.RDS")))){
       pbp_g<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.RDS")))
       pbplist[[i]]<-pbp_g  # subset(pbp_g, select = -players)
@@ -47,14 +56,18 @@ compile_season<-function(season){
   tryCatch({pbp<-dplyr::bind_rows(pbplist)},
            error = function(e){
              message("error in combining files. Retrying")
-             pb <- progress::progress_bar$new(
-               format = "Compiling game :gid [:bar] :percent eta: :eta",
-               total = length(gameIds)
-             )
+             if(progress){
+               pb <- progress::progress_bar$new(
+                 format = "Compiling game :gid [:bar] :percent eta: :eta",
+                 total = length(gameIds)
+               )
+             }
 
              for(i in seq_along(gameIds)){
                gameId<-gameIds[[i]]
-               pb$tick(tokens=list(gid = gameId))
+               if(progress){
+                 pb$tick(tokens=list(gid = gameId))
+               }
                if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.RDS")))){
                  pbp_g<-pbplist[[i]]
                  pbp<-dplyr::bind_rows(pbp, pbp_g)  # subset(pbp_g, select = -players)
@@ -67,13 +80,17 @@ compile_season<-function(season){
 
 
   if(length(games_to_retry_scraping) > 0){
-    pb <- progress::progress_bar$new(
-      format = "Re-scraping game :gid [:bar] :percent eta: :eta",
-      total = length(games_to_retry_scraping)
-    )
+    if(progress){
+      pb <- progress::progress_bar$new(
+        format = "Re-scraping game :gid [:bar] :percent eta: :eta",
+        total = length(games_to_retry_scraping)
+      )
+    }
 
     for(gameId in games_to_retry_scraping){
-      pb$tick(tokens=list(gid = gameId))
+      if(progress){
+        pb$tick(tokens=list(gid = gameId))
+      }
       pbp_g<-data.frame()
       pbp_g<-process_game_pbp(gameId)
       if(nrow(pbp_g) > 0 | is.na(nrow(pbp_g))){
@@ -82,6 +99,9 @@ compile_season<-function(season){
     }
   }
 
+  if(progress){
+    pb$terminate()
+  }
   saveRDS(pbp, file.path(getOption("BulsinkBxG.data.path"), paste0(season, "_pbp.rds")))
 
   invisible(pbp)
@@ -127,22 +147,33 @@ get_goalies <- function(feed, team){
 #' Process a Season's PBPs
 #'
 #' @param season the season's pbp files to process
+#' @param progress Whether to show a progress bar. Default true, but requires the `progress` package
 #'
 #' @export
-process_season_pbp<-function(season){
+process_season_pbp<-function(season, progress=TRUE){
   gameIds<-get_game_ids(season=season)
   gameIds<-gameIds[is_valid_gameId(gameIds)]
-  pb <- progress::progress_bar$new(
-    format = "Processing game :gid [:bar] :percent eta: :eta",
-    total = length(gameIds)
-  )
+  if(!requireNamespace("progress")){
+    progress <- FALSE
+  }
+  if(progress){
+    pb <- progress::progress_bar$new(
+      format = "Processing game :gid [:bar] :percent eta: :eta",
+      total = length(gameIds)
+    )
+  }
+
   for(gameId in gameIds){
-    pb$tick(tokens=list(gid = gameId))
+    if(progress){
+      pb$tick(tokens=list(gid = gameId))
+    }
     tryCatch(process_game_pbp(gameId = gameId),
              error = function(e) message("GameID: ",gameId, ", Error: ", e)
     )
   }
-  pb$terminate()
+  if(progress){
+    pb$terminate()
+  }
 }
 
 

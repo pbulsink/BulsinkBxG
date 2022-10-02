@@ -4,21 +4,30 @@
 #'
 #' @param gameIds game ids to scrape
 #' @param overwrite_downloads If true, will re-download games. Else only try for missing games
+#' @param progress Whether to show a progress bar. Default true, but requires the `progress` package
 #'
 #' @export
-scrape_and_save<-function(gameIds, overwrite_downloads = FALSE){
+scrape_and_save<-function(gameIds, overwrite_downloads = FALSE, progress = TRUE){
   #Ensure Data directory is available, if not, make it
   check_or_create_dir(season=unique(substr(gameIds, 1,4)))
 
   #weird files - shifts2015020497
   gameIds<-gameIds[is_valid_gameId(gameIds)]
-  pb <- progress::progress_bar$new(
-    format = "Scraping game :gid [:bar] :percent eta: :eta",
-    total = length(gameIds)+1
-  )
-  pb$tick(0)
+
+  if(!requireNamespace("progress")){
+    progress <- FALSE
+  }
+  if (progress){
+    pb <- progress::progress_bar$new(
+      format = "Scraping game :gid [:bar] :percent eta: :eta",
+      total = length(gameIds)+1
+    )
+    pb$tick(0)
+  }
   for(gameId in gameIds){
-    pb$tick(tokens=list(gid = gameId))
+    if(progress){
+      pb$tick(tokens=list(gid = gameId))
+    }
     if(!is_valid_gameId(gameId)){
       #pb$tick(tokens=list(gid = gameId))
       next
@@ -60,7 +69,9 @@ scrape_and_save<-function(gameIds, overwrite_downloads = FALSE){
     }
   }
 
-  pb$terminate()
+  if(progress){
+    pb$terminate()
+  }
 }
 
 

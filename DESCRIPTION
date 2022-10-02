@@ -1,7 +1,7 @@
 Package: BulsinkBxG
 Type: Package
 Title: A xG package
-Version: 0.1.0
+Version: 0.1.2022.1
 Author: Philip Bulsink
 Maintainer: Philip Bulsink <phil@bulsink.ca>
 Description: More about what it does (maybe more than one line)
@@ -14,7 +14,6 @@ Imports:
     tidyr,
     dplyr,
     magrittr,
-    progress,
     httr,
     janitor,
     purrr,
@@ -31,12 +30,13 @@ Imports:
     tune,
     workflows,
     forcats,
-    hardhat,
-    doParallel
+    hardhat
 Suggests:
     butcher,
+    progress,
     lifecycle,
-    testthat
+    testthat,
+    doParallel
 Depends: 
     R (>= 2.10)
 Roxygen: list(markdown = TRUE)

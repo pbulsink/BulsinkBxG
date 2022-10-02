@@ -112,7 +112,7 @@ build_xgb_model<-function(season, save_model=TRUE){
     #workflows::add_formula(is_goal ~ .) %>%
     workflows::add_model(xgb_spec)
 
-  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE)){
+  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE) & requireNamespace("doParallel")){
     doParallel::registerDoParallel(cores = parallel::detectCores())
   }
 
@@ -126,7 +126,7 @@ build_xgb_model<-function(season, save_model=TRUE){
     metrics = yardstick::metric_set(tes,  yardstick::roc_auc, yardstick::mn_log_loss)
   )
 
-  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE)){
+  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE) & requireNamespace("doParallel")){
     doParallel::stopImplicitCluster()
   }
   #tune::show_best(xgb_res, "tes")

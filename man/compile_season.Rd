@@ -4,10 +4,12 @@
 \alias{compile_season}
 \title{Compile PBP to single season file}
 \usage{
-compile_season(season)
+compile_season(season, progress = TRUE)
 }
 \arguments{
 \item{season}{Season to compile to file}
+
+\item{progress}{Whether to show a progress bar. Default true, but requires the \code{progress} package}
 }
 \value{
 pbp of whole season
