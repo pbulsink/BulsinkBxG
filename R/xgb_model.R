@@ -70,6 +70,7 @@ build_xgb_model<-function(season, save_model=TRUE){
   #recipes::prep() ## turns out feeding in new data is harder if the recipe is prepped? whatever that means.
 
   message('defining model parameters')
+
   xgb_spec <- parsnip::boost_tree(
     trees = 1000,
     tree_depth = tune::tune(),
@@ -79,8 +80,20 @@ build_xgb_model<-function(season, save_model=TRUE){
     mtry = tune::tune(),                               ## randomness
     learn_rate = tune::tune(),                         ## step size
 
-  ) %>%
-    parsnip::set_engine("xgboost", scale_pos_weight = tune::tune(), max_delta_step = 1) %>%
+  )
+
+  if(getOption("BulsinkBxG.xgboost.gpu", default = FALSE)){
+    xgb_spec <- xgb_spec %>%
+      parsnip::set_engine("xgboost", scale_pos_weight = tune::tune(), max_delta_step = 1, tree_method = 'gpu_hist')
+  } else {
+    xgb_spec <- xgb_spec %>%
+      parsnip::set_engine("xgboost", scale_pos_weight = tune::tune(), max_delta_step = 1)
+  }
+
+  xgb_spec <- xgb_spec %>%
+    parsnip::set_engine("xgboost", scale_pos_weight = tune::tune(), max_delta_step = 1)
+
+  xgb_spec <- xgb_spec %>%
     parsnip::set_mode("classification")
 
   xgb_grid <- dials::grid_latin_hypercube(
@@ -99,7 +112,9 @@ build_xgb_model<-function(season, save_model=TRUE){
     #workflows::add_formula(is_goal ~ .) %>%
     workflows::add_model(xgb_spec)
 
-  doParallel::registerDoParallel(cores = parallel::detectCores())
+  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE)){
+    doParallel::registerDoParallel(cores = parallel::detectCores())
+  }
 
   message('tuning model')
   set.seed(1234)
@@ -111,7 +126,9 @@ build_xgb_model<-function(season, save_model=TRUE){
     metrics = yardstick::metric_set(tes,  yardstick::roc_auc, yardstick::mn_log_loss)
   )
 
-  doParallel::stopImplicitCluster()
+  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE)){
+    doParallel::stopImplicitCluster()
+  }
   #tune::show_best(xgb_res, "tes")
 
   best_model <- tune::select_best(xgb_res, "tes")
@@ -144,10 +161,14 @@ build_xgb_model<-function(season, save_model=TRUE){
     if(!dir.exists(file.path(getOption("BulsinkBxG.data.path"), 'models'))){
       dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))
     }
-    savedmodel<-final_xgb$.workflow[[1]] %>%
-      butcher::axe_data() %>%
-      butcher::axe_env() %>%
-      butcher::axe_call()
+    if(requireNamespace('butcher')){
+      savedmodel<-final_xgb$.workflow[[1]] %>%
+        butcher::axe_data() %>%
+        butcher::axe_env() %>%
+        butcher::axe_call()
+    } else {
+      savedmodel<-final_xgb$.workflow[[1]]
+    }
     saveRDS(savedmodel, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_xgb_model.RDS")))
   }
 

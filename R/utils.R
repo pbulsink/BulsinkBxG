@@ -61,7 +61,8 @@ check_or_create_dir<-function(season=NULL){
 .onLoad <- function(libname, pkgname) {
   op <- options()
   op.BulsinkBxG <- list(
-    BulsinkBxG.data.path = "~/NHLpbp"
+    BulsinkBxG.data.path = "~/NHLpbp",
+    BulsinkBxG.xgboost.gpu = FALSE
   )
   toset <- !(names(op.BulsinkBxG) %in% names(op))
   if(any(toset)) options(op.BulsinkBxG[toset])
@@ -70,7 +71,13 @@ check_or_create_dir<-function(season=NULL){
 }
 
 .onAttach <- function(libname, pkgname) {
-  packageStartupMessage('BulsinkB xG package loaded. Using ', getOption("BulsinkBxG.data.path"), ' as data path.\nTo change path, set option("BulsinkBxG.data.path" = [new path]).\nThis can be done interactively or using .RProfile to save your preference.')
+  msgtext <- paste0('BulsinkBxG package loaded. Using ', getOption("BulsinkBxG.data.path"),
+                    ' as data path.\nTo change path, set option("BulsinkBxG.data.path" = [new path]).\n',
+                    'This can be done interactively or using .RProfile to save your preference.')
+  if(getOption("BulsinkBxG.xgboost.gpu")){
+    msgtext <- paste0(msgtext, '\nBulsinkBxG set to use xgboost gpu.')
+  }
+  packageStartupMessage(msgtext)
 }
 
 
