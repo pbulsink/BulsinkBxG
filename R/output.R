@@ -18,19 +18,19 @@ get_game_xg<-function(gameId, model=NULL){
   stopifnot(as.numeric(season)>=2011)
 
   if(file.exists(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))){
-    xg_files<-read.csv(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))
+    xg_files<-utils::read.csv(file.path(getOption("BulsinkBxG.data.path"), "xG.csv"))
     if(gameId %in% xg_files$GameId){
       return(list("home_xg" = xg_files[xg_files$GameId == gameId,]$home_xg, "away_xg" = xg_files[xg_files$GameId == gameId,]$away_xg))
     }
   } else {
     xg_files<-data.frame("GameId" = character(), "home_xg" = numeric(), "away_xg" = numeric())
-    write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE, sep = ",")
+    utils::write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE, sep = ",")
   }
 
   pbp<-model_game_xg(gameId = gameId, model = model)
 
   xg_files<-data.frame("GameId" = gameId, "home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG, na.rm = TRUE), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG, na.rm = TRUE))
-  write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
+  utils::write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
   invisible(list("home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG)))
 }
 
@@ -52,8 +52,8 @@ build_game_report<-function(gameId, model = NULL){
 
   pbp<-model_game_xg(gameId = gameId, model = model)
 
-  home_team<-head(pbp$home_team, 1)
-  away_team<-head(pbp$away_team, 1)
+  home_team<-utils::head(pbp$home_team, 1)
+  away_team<-utils::head(pbp$away_team, 1)
 
   home_xg<-sum(pbp[pbp$is_home == 1, ]$xG)
   away_xg<-sum(pbp[pbp$is_home == 0, ]$xG)

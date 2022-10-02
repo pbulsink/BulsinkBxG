@@ -75,7 +75,7 @@ tes_vec <- function(truth,
 }
 
 tes_estimator_impl <- function(truth, estimate, estimator, event_level) {
-  if (yardstick:::is_binary(estimator)) {
+  if (identical(estimator, "binary")) {
     tes_binary(truth, estimate, event_level)
   }
   else {
@@ -84,7 +84,7 @@ tes_estimator_impl <- function(truth, estimate, estimator, event_level) {
 }
 
 tes_binary <- function(truth, estimate, event_level) {
-  if (!yardstick:::is_event_first(event_level)) {
+  if (!identical(event_level, "first")) {
     lvls <- levels(truth)
     truth <- stats::relevel(truth, lvls[[2]])
   }

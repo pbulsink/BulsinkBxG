@@ -7,14 +7,14 @@
 get_xg(data, model_collection, metrics = FALSE)
 }
 \arguments{
-\item{data}{The data to get an xG value rom}
+\item{data}{The data to get an xG value from}
 
 \item{model_collection}{a model collection}
 
 \item{metrics}{T/F on if you want metrics returned instead of xG values}
 }
 \value{
-
+either a xG value for each row of data and the data in a list,  or metrics on the data
 }
 \description{
 Get xG

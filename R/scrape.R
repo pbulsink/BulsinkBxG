@@ -172,7 +172,7 @@ scrape_game_feed<-function(game_id){
     },
     error = function(e) {
       message(e)
-      message(glue::glue("{Sys.time()}: Invalid arguments or no game feed data for {game_id} available!"))
+      message(Sys.time(), ": Invalid arguments or no game feed data for ", game_id, " available!")
     },
     warning = function(w) {
     },
@@ -285,8 +285,8 @@ scrape_game_shifts<-function(game_id){
         tibble::as_tibble()
     },
     error = function(e) {
-      message(glue::glue("{Sys.time()}: Invalid arguments or no game shift data for {game_id} available!"))
-    },
+      message(Sys.time(), ": Invalid arguments or no game shift data for ", game_id, " available!")
+  },
     warning = function(w) {
     },
     finally = {
