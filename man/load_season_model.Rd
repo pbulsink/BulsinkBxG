@@ -4,10 +4,14 @@
 \alias{load_season_model}
 \title{Load Season Model}
 \usage{
-load_season_model(season, model = "logistic")
+load_season_model(season, model = "logistic", weighted = TRUE)
 }
 \arguments{
 \item{season}{The season's xG model to load}
+
+\item{model}{What type of model to load - default is logistic, the default model type. also accepts xgb}
+
+\item{weighted}{whether to load the regular or weighted model}
 }
 \value{
 a xG model.

@@ -4,10 +4,19 @@
 \alias{build_logistic_model}
 \title{Build xG model}
 \usage{
-build_logistic_model(season, save_model = TRUE)
+build_logistic_model(
+  season,
+  num_seasons_include = 3,
+  weighted = TRUE,
+  save_model = TRUE
+)
 }
 \arguments{
 \item{season}{The season for which to build the model. Must be 2012 or later.}
+
+\item{num_seasons_include}{how many seasons to include, default 3}
+
+\item{weighted}{Whether to use weighted data (older seasons less important) or have all wights 1}
 
 \item{save_model}{Whether to write the model to RDS file to be used later. File saved to default data directory, then \verb{.../model/[season]_model.RDS}}
 }

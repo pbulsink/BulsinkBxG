@@ -6,6 +6,12 @@ prep_xg_model_data<-function(pbp){
     dplyr::filter(.data$event %in% corsi_events | dplyr::lag(.data$event %in% corsi_events)) %>%  # Use Fenwicks because blocks are incorrectly located
     dplyr::mutate(is_home = dplyr::if_else(.data$team_tri_code == .data$home_team, 1, 0),  # binary home team event factor
            is_goal = dplyr::if_else(.data$event == "Goal", 1, 0))%>%  # binary is goal factor
+    dplyr::mutate(shot_type = dplyr::case_when(
+      shot_type == "Bat" ~ "Deflected",
+      shot_type == "Poke" ~ "Wrist",
+      shot_type == "Between Legs" ~ "Wrist",
+      TRUE ~ shot_type
+    )) %>%
     dplyr::group_by(.data$game_id, .data$about_period, .data$team_tri_code) %>%
     dplyr::mutate(
       x_correct = dplyr::if_else(stats::median(.data$x_coord[.data$event %in% c('shot', 'Goal') & abs(.data$x_coord) > 25]) < 0, -1L, 1L, 1L),  # have to put all the shots on the right side of the rink.
@@ -205,9 +211,9 @@ adjust_for_rink_bias <- function(data, season, backchecking = FALSE){
   return(data)
 }
 
-build_model<-function(season, save_model = TRUE, model='logistic'){
+build_model<-function(season, save_model = TRUE, weighted = TRUE, model='logistic'){
   if(model == 'logistic'){
-    build_logistic_model(season=season, save_model = save_model)
+    build_logistic_model(season=season, save_model = save_model, weighted=weighted)
   } else if (model == 'xgb') {
     build_xgb_model(season=season, save_model = save_model)
   } else {
@@ -247,26 +253,28 @@ test_model <- function(model, test_data){
 #'
 #' @description This function will load the season model from a file. If it does not exist, it will attempt to download from GitHub. Thus, if you plan to make your own xG model based on this code, please use `build_model[BulsinkBxG::build_model]` instead.
 #' @param season The season's xG model to load
+#' @param model What type of model to load - default is logistic, the default model type. also accepts xgb
+#' @param weighted whether to load the regular or weighted model
 #'
 #' @return a xG model.
 #' @export
-load_season_model<-function(season, model = 'logistic'){
+load_season_model<-function(season, model = 'logistic', weighted=TRUE){
   stopifnot(season >= 2011)
   stopifnot(model %in% c('logistic', 'xgb'))
 
 
-  if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_", model, "_model.RDS")))) {
+  if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, ifelse(weighted, "_weighted", ""), "_", model, "_model.RDS")))) {
 
     message("Downloading season model from GitHub")
 
-    git_url<-paste0("https://raw.githubusercontent.com/pbulsink/BulsinkBxG/main/data-raw/", season, "_", model, "_model.RDS")
+    git_url<-paste0("https://raw.githubusercontent.com/pbulsink/BulsinkBxG/main/data-raw/", season, ifelse(weighted, "_weighted", ""), "_", model, "_model.RDS")
     if(!dir.exists(file.path(getOption("BulsinkBxG.data.path"), 'models'))){
       dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))
     }
-    utils::download.file(git_url, file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_model.RDS")), method="curl")
+    utils::download.file(git_url, file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, ifelse(weighted, "_weighted", ""), "_model.RDS")), method="curl")
   }
-  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, "_", model, "_model.RDS")))){
-    model<-readRDS(file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_", model, "_model.RDS")))
+  if(file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, ifelse(weighted, "_weighted", ""), "_", model, "_model.RDS")))){
+    model<-readRDS(file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season, ifelse(weighted, "_weighted", ""), "_", model, "_model.RDS")))
   } else {
     stop("File was not found and could not be loaded")
   }
