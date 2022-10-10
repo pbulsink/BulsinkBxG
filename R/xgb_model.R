@@ -19,6 +19,7 @@ build_xgb_model<-function(season, save_model=TRUE){
     warning("Season 2011 will be built using 2011-2012 data (i.e. no out-of-season data.")
   }
 
+  message("Loading Data")
   if(season >= 2014){
     pbp<-dplyr::bind_rows(load_prepped_data(season-1), load_prepped_data(season-2), load_prepped_data(season-3))
   } else if (season == 2013){
@@ -64,39 +65,31 @@ build_xgb_model<-function(season, save_model=TRUE){
     recipes::recipe(result ~ ., data = train_data) %>%
     #themis::step_downsample(is_goal, under_ratio = 5) %>%
     recipes::update_role(.data$event_id, new_role = "ID") %>%
-    recipes::step_novel(recipes::all_predictors(),-recipes::all_numeric()) %>%
+    recipes::step_novel(recipes::all_nominal_predictors()) %>%
     recipes::step_naomit(.data$adjusted_distance, .data$shot_angle, .data$x_coord, .data$y_coord, skip = TRUE) %>%
-    recipes::step_dummy(recipes::all_predictors(),-recipes::all_numeric()) #%>%
+    recipes::step_dummy(recipes::all_nominal_predictors(), one_hot = TRUE) %>%
+    recipes::step_zv(recipes::all_predictors())#%>%
   #recipes::prep() ## turns out feeding in new data is harder if the recipe is prepped? whatever that means.
 
   message('defining model parameters')
 
   xgb_spec <- parsnip::boost_tree(
-    trees = 1000,
-    tree_depth = tune::tune(),
-    min_n = tune::tune(),
-    loss_reduction = tune::tune(),                     ## first three: model complexity
-    sample_size = tune::tune(),
-    mtry = tune::tune(),                               ## randomness
-    learn_rate = tune::tune(),                         ## step size
-
-  )
+      trees = tune::tune(),tree_depth = tune::tune(),min_n = tune::tune(), mtry = tune::tune(),
+      loss_reduction = tune::tune(), sample_size = tune::tune(), learn_rate = tune::tune()) %>%
+    parsnip::set_mode("classification")
 
   if(getOption("BulsinkBxG.xgboost.gpu", default = FALSE)){
+    message("Training with GPU")
     xgb_spec <- xgb_spec %>%
       parsnip::set_engine("xgboost", scale_pos_weight = tune::tune(), max_delta_step = 1, tree_method = 'gpu_hist')
   } else {
+    message("Training without GPU")
     xgb_spec <- xgb_spec %>%
       parsnip::set_engine("xgboost", scale_pos_weight = tune::tune(), max_delta_step = 1)
   }
 
-  xgb_spec <- xgb_spec %>%
-    parsnip::set_engine("xgboost", scale_pos_weight = tune::tune(), max_delta_step = 1)
-
-  xgb_spec <- xgb_spec %>%
-    parsnip::set_mode("classification")
-
   xgb_grid <- dials::grid_latin_hypercube(
+    dials::trees(),
     dials::tree_depth(),
     dials::min_n(),
     dials::loss_reduction(),
@@ -112,8 +105,10 @@ build_xgb_model<-function(season, save_model=TRUE){
     #workflows::add_formula(is_goal ~ .) %>%
     workflows::add_model(xgb_spec)
 
-  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE) & requireNamespace("doParallel")){
-    doParallel::registerDoParallel(cores = parallel::detectCores())
+  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE)){
+    if(requireNamespace("doParallel")){
+      doParallel::registerDoParallel(cores = parallel::detectCores())
+    }
   }
 
   message('tuning model')
@@ -122,16 +117,19 @@ build_xgb_model<-function(season, save_model=TRUE){
     xgb_wf,
     resamples = v_folds,
     grid = xgb_grid,
-    control = tune::control_grid(save_pred = TRUE),
+    control = tune::control_grid(save_pred = TRUE, verbose = TRUE),
     metrics = yardstick::metric_set(tes,  yardstick::roc_auc, yardstick::mn_log_loss)
   )
 
-  if(!getOption("BulsinkBxG.xgboost.gpu", default = FALSE) & requireNamespace("doParallel")){
+  if(requireNamespace("doParallel")){
     doParallel::stopImplicitCluster()
+    gc()
   }
   #tune::show_best(xgb_res, "tes")
 
-  best_model <- tune::select_best(xgb_res, "tes")
+  best_model <- tune::select_best(xgb_res, "roc")
+
+  saveRDS(best_model, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0('_', season,"_xgb_model_best_auc_params.RDS")))
 
   message('finalizing model')
   final_xgb <- xgb_wf %>%
@@ -162,14 +160,15 @@ build_xgb_model<-function(season, save_model=TRUE){
       dir.create(file.path(getOption("BulsinkBxG.data.path"), 'models'))
     }
     if(requireNamespace('butcher')){
-      savedmodel<-final_xgb$.workflow[[1]] %>%
+      savedmodel<-final_xgb %>%
         butcher::axe_data() %>%
         butcher::axe_env() %>%
         butcher::axe_call()
     } else {
-      savedmodel<-final_xgb$.workflow[[1]]
+      savedmodel<-final_xgb
     }
     saveRDS(savedmodel, file = file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season,"_xgb_model.RDS")))
+    #xgboost::xgb.save()
   }
 
   return(list(model=final_xgb, metrics=tune::collect_metrics(final_res)))

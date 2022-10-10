@@ -24,7 +24,7 @@ get_game_xg<-function(gameId, model=NULL){
     }
   } else {
     xg_files<-data.frame("GameId" = character(), "home_xg" = numeric(), "away_xg" = numeric())
-    utils::write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE, sep = ",")
+    write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE, sep = ",", append=FALSE)
   }
 
   pbp<-model_game_xg(gameId = gameId, model = model)

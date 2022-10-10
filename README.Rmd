@@ -116,15 +116,34 @@ purrr::walk(2011:2021, function(x) build_model(x))
 
 Note that this will take a very long time. If you plan to use the default model, please just load the model using `load_season_model()` function.
 
+## GPU Usage for XGBoost
+If you have XGBoost installed with GPU configuration, and want to train using the GPU, set the `BulsinkBxG.xgboost.gpu` option to `TRUE`. This option is `FALSE` by default. More information on XGBoost GPU can be found at [https://xgboost.readthedocs.io/en/stable/gpu/index.html](https://xgboost.readthedocs.io/en/stable/gpu/index.html), with installation guide in [the docs](https://xgboost.readthedocs.io/en/stable/install.html#r). 
+
 # Model Performance Metrics
 
 This model uses a custom metric to compare performance of the predicted xG to the actual goals. In addition to using accuracy, log loss and ROC AUC, a custom metric called Total Error Sum (TES) has been developed. The TES metric compares the total sum of goals in the predictor, and the total sum of the xG values. If the TES is positive, there are more goals than expected goals in the season. If negative, there are more xG than goals.
 
-The model provides the following performance by each year:
+The model provides the following performance by each year in the logistic (gbm) version:
 
 | Season | Accuracy | ROC AUC | Log Loss | Sum (G) - Sum(xG) |
 |--------|----------|---------|----------|-------------------|
-| 2011   |          |         |          |                   |
+| 2011   |  --      |   --    | --       |  --               |
+| 2012   |          | 0.914   | 0.152    |  91.58            |
+| 2013   |          | 0.919   | 0.149    | 116.09            |
+| 2014   |          | 0.918   | 0.148    |  37.43            |
+| 2015   |          | 0.917   | 0.148    | 116.68            |
+| 2016   |          | 0.914   | 0.149    | 132.59            |
+| 2017   |          | 0.914   | 0.151    | 226.04            |
+| 2018   |          | 0.908   | 0.159    | 230.93            |
+| 2019   |          | 0.908   | 0.162    | 321.33            |
+| 2020   |          | 0.911   | 0.158    | 206.54            |
+| 2021   |          | 0.906   | 0.162    |  46.92            |
+
+Similarly, the XGBoost version's performance metrics are shown here: 
+
+| Season | Accuracy | ROC AUC | Log Loss | Sum (G) - Sum(xG) |
+|--------|----------|---------|----------|-------------------|
+| 2011   |  --      |   --    | --       |  --               |
 | 2012   | 0.333036 | 0.89737 |          | 151.2             |
 | 2013   |          |         |          |                   |
 | 2014   |          |         |          |                   |
@@ -139,4 +158,3 @@ The model provides the following performance by each year:
 # Code of Conduct
 
 Please note that the BulsinkBxG project is released with a [Contributor Code of Conduct](https://contributor-covenant.org/version/2/0/CODE_OF_CONDUCT.html). By contributing to this project, you agree to abide by its terms.
-
