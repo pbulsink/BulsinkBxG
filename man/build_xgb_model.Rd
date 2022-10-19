@@ -15,7 +15,9 @@ build_xgb_model(season, save_model = TRUE)
 invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with \code{predict()}
 }
 \description{
-The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons. 2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons.
+2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+This model is built using the \code{xgboost} engine and can be very very slow (> 1 day to process even on reasonably capable machines)
 
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
 }

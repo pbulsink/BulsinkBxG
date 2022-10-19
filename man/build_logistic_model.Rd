@@ -2,7 +2,7 @@
 % Please edit documentation in R/logistic_model.R
 \name{build_logistic_model}
 \alias{build_logistic_model}
-\title{Build xG model}
+\title{Build Logistic xG model}
 \usage{
 build_logistic_model(
   season,
@@ -24,7 +24,9 @@ build_logistic_model(
 invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with \code{predict()}
 }
 \description{
-The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons. 2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons.
+2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+This model is built using the \code{glmnet} engine, which must be available on this computer
 
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
 }

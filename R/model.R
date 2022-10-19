@@ -207,18 +207,30 @@ adjust_for_rink_bias <- function(data, season, backchecking = FALSE){
   return(data)
 }
 
+#' Build Model
+#'
+#' @param season The season for which to build the model. Must be 2011 or later.
+#' @param save_model Whether to write the model to RDS file to be used later. File saved to default data directory, then `.../model/[season]_[weighted]_[modeltype]_model.RDS`
+#' @param weighted Whether or not to use historical weighting for logistic models. Default True
+#' @param model Model type - logistic (using glmnet) or xgboost (using xgboost). Note that xgboost models are very slow to train
+#'
+#' @return a model object invisibly.
+#' @export
+#' @seealso build_xgb_model
+#' @seealso build_logistic_model
 build_model<-function(season, save_model = TRUE, weighted = TRUE, model='logistic'){
   if(model == 'logistic'){
-    build_logistic_model(season=season, save_model = save_model, weighted=weighted)
+    model <- build_logistic_model(season=season, save_model = save_model, weighted=weighted)
   } else if (model == 'xgb') {
-    build_xgb_model(season=season, save_model = save_model)
+    model <- build_xgb_model(season=season, save_model = save_model)
   } else {
     stop("Must select either 'xgb' or 'logistic' model type")
   }
+  invisible(model)
 }
 
-build_save_past_models <- function(){
-  purrr::walk(2011:2021, function(x) build_model(x))
+build_save_past_models <- function(model='logistic', weighted=TRUE, save_model=TRUE){
+  purrr::walk(2011:2022, build_model, model=model, weighted=weighted, save_model=save_model)
 }
 
 
@@ -258,6 +270,9 @@ load_season_model<-function(season, model = 'logistic', weighted=TRUE){
   stopifnot(season >= 2011)
   stopifnot(model %in% c('logistic', 'xgb'))
 
+  if(model == 'xgb') {
+    weighted <- FALSE
+  }
 
   if(!file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, ifelse(weighted, "_weighted", ""), "_", model, "_model.RDS")))) {
 
@@ -272,7 +287,9 @@ load_season_model<-function(season, model = 'logistic', weighted=TRUE){
   if(file.exists(file.path(getOption("BulsinkBxG.data.path"), 'models', paste0(season, ifelse(weighted, "_weighted", ""), "_", model, "_model.RDS")))){
     model<-readRDS(file.path(getOption("BulsinkBxG.data.path"), "models", paste0(season, ifelse(weighted, "_weighted", ""), "_", model, "_model.RDS")))
   } else {
-    stop("File was not found and could not be loaded")
+    warning("File was not found and could not be loaded")
+    message('building model')
+    model<-build_model(season = season, model = model, weighted = weighted)
   }
 
   return(model)

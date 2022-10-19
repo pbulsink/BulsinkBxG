@@ -85,12 +85,21 @@ build_game_report<-function(gameId, model = NULL){
 }
 
 model_game_xg<-function(gameId, model=NULL){
+  stopifnot(requireNamespace('workflows', quietly=TRUE))
   season<-substr(gameId, 1, 4)
 
   stopifnot(as.numeric(season)>=2011)
 
   if(is.null(model)){
-    model<-load_season_model(season = as.numeric(season))
+    model<-'logistic'
+  }
+
+  model<-load_season_model(season = as.numeric(season), model=model)
+
+  if(model=='logistic'){
+    stopifnot(requireNamespace('glmnet', quietly = TRUE))
+  } else if (model == 'xgboost'){
+    stopifnot(requireNamespace('xgboost', quietly=TRUE))
   }
 
   if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds")))){
@@ -115,9 +124,19 @@ model_game_xg<-function(gameId, model=NULL){
   return(game_pbp)
 }
 
+
+#' Get A Season's xG values
+#'
+#' @description This function returns forces calculation of GameID and Home & Away xG values for every game in a season. It also writes all games' results to
+#' a file at getOption("BulsinkBxG.data.path")/xG.csv
+#'
+#' @param season Season in YYYYY format (for example 2011 for the 2011-2012 season)
+#'
+#' @return Nothing (invisibly TRUE)
+#' @export
 get_season_xGs<-function(season){
   gameIds<-get_game_ids(season=season)
   gameIds<-gameIds[is_valid_gameId(gameIds)]
   purrr::walk(gameIds, get_game_xg)
+  invisible(TRUE)
 }
-

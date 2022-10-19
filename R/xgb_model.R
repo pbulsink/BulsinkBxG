@@ -1,6 +1,8 @@
 #' Build xG model using xgboost
 #'
-#' @description The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons. 2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+#' @description The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons.
+#' 2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+#' This model is built using the `xgboost` engine and can be very very slow (> 1 day to process even on reasonably capable machines)
 #'
 #' `r lifecycle::badge('experimental')`
 #'
@@ -8,11 +10,12 @@
 #' @param save_model Whether to write the model to RDS file to be used later. File saved to default data directory, then `.../model/[season]_model.RDS`
 #'
 #' @return invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with `predict()`
-#' @export
+
 build_xgb_model<-function(season, save_model=TRUE){
   stopifnot(is.numeric(season))
   stopifnot(season >= 2011)
   stopifnot(season <= as.numeric(strftime(Sys.Date(), '%Y')))
+  stopifnot(requireNamespace('xgboost', quietly = TRUE))
   fenwick_events <- c('Shot', 'Missed Shot', 'Miss', 'Goal')
 
   if(season == 2011){

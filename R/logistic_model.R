@@ -1,6 +1,8 @@
-#' Build xG model
+#' Build Logistic xG model
 #'
-#' @description The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons. 2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+#' @description The model is built on a past 3 years of data as xG change over time. For example, the model for 2021 is built with 2018, 2019, 2020 seasons.
+#' 2012 and 2013 are built with one and two seasons only, respectively. Model for 2011 is built and tested on 2011 data only.
+#' This model is built using the `glmnet` engine, which must be available on this computer
 #'
 #' `r lifecycle::badge('experimental')`
 #'
@@ -10,14 +12,14 @@
 #' @param weighted Whether to use weighted data (older seasons less important) or have all wights 1
 #'
 #' @return invisibly a list of object containing the model and the metrics against the training set. The model output can be used directly with `predict()`
-#' @export
 build_logistic_model<-function(season, num_seasons_include=3, weighted=TRUE, save_model=TRUE){
   set.seed(123)
   stopifnot(is.numeric(season))
   stopifnot(season >= 2011)
   stopifnot(season <= as.numeric(strftime(Sys.Date(), '%Y')))
-  stopifnot(num_seasons_include > 0)
-  stopifnot(season-num_seasons_include >= 2011)
+  stopifnot(num_seasons_include >= 0)
+  #stopifnot(season-num_seasons_include >= 2011)
+  stopifnot(requireNamespace('glmnet', quietly = TRUE))
 
   if(season == 2011){
     message("Season 2011 will be built using 2011-2012 data (i.e. no out-of-season data).")
@@ -156,16 +158,18 @@ build_logistic_submodel<-function(train_data, test_data){
   model_recipe <-
     recipes::recipe(result ~ ., data = train_data) %>%
     recipes::update_role(.data$event_id, new_role = "ID") %>%
-    recipes::step_novel(recipes::all_predictors(),-recipes::all_numeric()) %>%
+    recipes::step_novel(recipes::all_nominal_predictors()) %>%
     recipes::step_naomit(.data$adjusted_distance, .data$shot_angle, skip = TRUE) %>%
-    recipes::step_dummy(recipes::all_predictors(),-recipes::all_numeric()) #%>%
+    recipes::step_dummy(recipes::all_nominal_predictors()) %>%
+    recipes::step_zv(recipes::all_predictors()) %>%
+    recipes::step_normalize(recipes::all_numeric_predictors())
 
   model_spec <- parsnip::logistic_reg(
-    mode = "classification",
-    engine = "glmnet",
     penalty = tune::tune(),
-    mixture = 0.5
-  )
+    mixture = tune::tune()
+  ) %>%
+    parsnip::set_mode('classification') %>%
+    parsnip::set_engine('glmnet')
 
   model_workflow <- workflows::workflow() %>%
     workflows::add_recipe(model_recipe) %>%
@@ -176,8 +180,8 @@ build_logistic_submodel<-function(train_data, test_data){
   }
 
 
-  pen_vals <- 10^seq(-6, 0, length.out = 19)
-  grid <- dials::grid_latin_hypercube(
+  pen_vals <- 10^seq(-6, 1, length.out = 20)
+  grid <- dials::grid_max_entropy(
     dials::penalty(),
     dials::mixture(),
     size = 30
@@ -185,8 +189,8 @@ build_logistic_submodel<-function(train_data, test_data){
 
   model_res<-tune::tune_grid(model_workflow,
                              resamples = v_folds,
-                             grid = 25,
-                             control = tune::control_grid(save_pred = T),
+                             grid = grid,
+                             control = tune::control_grid(save_pred = TRUE, verbose = TRUE),
                              metrics = yardstick::metric_set(yardstick::roc_auc, yardstick::mn_log_loss, tes))
 
   best_model<-tune::select_best(model_res, 'roc_auc')

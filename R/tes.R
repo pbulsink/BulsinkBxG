@@ -1,12 +1,17 @@
 #' Total Error Sum
 #'
-#' @description Calculate the total error sum. `tes()` is a metric that is in the same units as the original data (squared). Total error sum adds up the 'truth' values and the 'predicted' values and squares the difference between the two.
+#' @description Calculate the total error sum. `tes()` is a metric that is in the same units as (the square of) the original data.
+#' Total error sum adds up the 'truth' values and the 'predicted' values and squares the difference between the two.
 #'
 #' @param data a `data.frame` containting the `truth` and `estimate` columns.
-#' @param truth The column identifier for the true results (that is `numeric`). This should be an unquoted column name although this argument is passed by expression and supports quasiquotation (you can unquote column names).
-#' @param estimate 	The column identifier for the predicted results (that is also `numeric`). As with `truth` this can be specified different ways but the primary method is to use an unquoted variable name.
+#' @param truth The column identifier for the true results (that is `numeric`). This should be an unquoted column name although
+#' this argument is passed by expression and supports quasiquotation (you can unquote column names).
+#' @param estimate 	The column identifier for the predicted results (that is also `numeric`). As with `truth` this can be s
+#' pecified different ways but the primary method is to use an unquoted variable name.
 #' @param na_rm A `logical` value indicating whether NA values should be stripped before the computation proceeds.
-#' @param event_level 	A single string. Either "`first`" or "`second`" to specify which level of `truth` to consider as the "event". The default uses an internal helper that generally defaults to "`first`", however, if the deprecated global option `yardstick.event_first` is set, that will be used instead with a warning.
+#' @param event_level 	A single string. Either "`first`" or "`second`" to specify which level of `truth` to consider as
+#' the "event". The default uses an internal helper that generally defaults to "`first`", however, if the deprecated
+#' global option `yardstick.event_first` is set, that will be used instead with a warning.
 #' @param ... not in use
 #'
 #' @return A tibble with columns .metric, .estimator, and .estimate and 1 row of values.
@@ -27,7 +32,7 @@ tes <- function(data, ...) {
 
 tes <- yardstick::new_prob_metric(
   tes,
-  direction = "minimize"
+  direction = "zero"
 )
 
 #' @export
@@ -96,7 +101,7 @@ tes_multiclass <- function(truth, estimate) {
   y <- sum((as.integer(truth) == 1))
   x <- sum(estimate)
 
-  out <- abs(y - x)
+  out <- (y - x)^2
 
   out
 }
