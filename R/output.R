@@ -94,13 +94,13 @@ model_game_xg<-function(gameId, model=NULL){
     model<-'logistic'
   }
 
-  model<-load_season_model(season = as.numeric(season), model=model)
-
   if(model=='logistic'){
     stopifnot(requireNamespace('glmnet', quietly = TRUE))
   } else if (model == 'xgboost'){
     stopifnot(requireNamespace('xgboost', quietly=TRUE))
   }
+
+  model<-load_season_model(season = as.numeric(season), model=model)
 
   if(file.exists(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds")))){
     game_pbp<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds")))
