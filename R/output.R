@@ -24,13 +24,13 @@ get_game_xg<-function(gameId, model=NULL){
     }
   } else {
     xg_files<-data.frame("GameId" = character(), "home_xg" = numeric(), "away_xg" = numeric())
-    write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE, sep = ",", append=FALSE)
+    try(utils::write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), col.names = TRUE, row.names = FALSE, sep = ",", append=FALSE))
   }
 
   pbp<-model_game_xg(gameId = gameId, model = model)
 
   xg_files<-data.frame("GameId" = gameId, "home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG, na.rm = TRUE), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG, na.rm = TRUE))
-  utils::write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
+  try(utils::write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE, sep = ","))
   invisible(list("home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG)))
 }
 
