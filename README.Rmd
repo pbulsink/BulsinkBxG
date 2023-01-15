@@ -19,7 +19,6 @@ knitr::opts_chunk$set(
 
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![R-CMD-check](https://github.com/pbulsink/BulsinkBxG/workflows/R-CMD-check/badge.svg)](https://github.com/pbulsink/BulsinkBxG/actions)
-
 <!-- badges: end -->
 
 The goal of BulsinkBxG is to share a basic Expected Goals (xG) model for NHL data from the year 2011 and onward. Expected Goals are generated from shot data, taking into consideration details about the shot like distance and angle to the net, whether the shot is a rebound, etc. By modelling across seasons of data, we're able to assign a value of how likely each shot was to becoming a goal. This in turn can show teams that have performed well (i.e. produced lots of high-quality shot attempts) despite scoring few goals. Expected goals can also be used to highlight players with good (or bad) impacts on their team (either producing xG above or below average, or having more or less xG against than their teammates).
