@@ -217,6 +217,10 @@ process_game_pbp<-function(gameId){
   feed<-feed[!is.na(feed$coordinates_x),]
   feed$game_id <- gameId
 
+  if(nrow(feed) == 0){
+    message(paste0('Feed for game ', gameId, ' not available. Returning NULL.'))
+    return(NULL)
+  }
   stopifnot(nrow(feed) > 0)
 
   if(nrow(shifts)>0){

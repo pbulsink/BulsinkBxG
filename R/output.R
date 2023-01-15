@@ -28,6 +28,10 @@ get_game_xg<-function(gameId, model=NULL){
   }
 
   pbp<-model_game_xg(gameId = gameId, model = model)
+  if(is.null(pbp)){
+    linescore <- nhlapi::nhl_games_linescore(gameIds = gameId)
+    invisible(list("home_xg" = linescore[[1]]$teams$home$goals, "away_xg" = linescore[[1]]$teams$away$goals))
+  }
 
   xg_files<-data.frame("GameId" = gameId, "home_xg" = sum(pbp[pbp$is_home == 1 ,]$xG, na.rm = TRUE), "away_xg" = sum(pbp[pbp$is_home == 0 ,]$xG, na.rm = TRUE))
   utils::write.table(xg_files, file = file.path(getOption("BulsinkBxG.data.path"), "xG.csv"), append = TRUE, row.names = FALSE, col.names = FALSE, sep = ",")
@@ -106,6 +110,9 @@ model_game_xg<-function(gameId, model=NULL){
     game_pbp<-readRDS(file.path(getOption("BulsinkBxG.data.path"), season, paste0(gameId, "_pbp.rds")))
   } else {
     game_pbp<-process_game_pbp(gameId)
+    if(is.null(game_pbp)){
+      return(NULL)
+    }
   }
 
   game_pbp<-suppressWarnings(prep_xg_model_data(game_pbp))
